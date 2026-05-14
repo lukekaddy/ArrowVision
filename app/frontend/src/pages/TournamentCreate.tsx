@@ -21,6 +21,7 @@ const DIVISION_OPTIONS = [
 
 interface CourseConfig {
   course: number;
+  name: string;
   targets: number;
 }
 
@@ -33,7 +34,7 @@ export default function TournamentCreate() {
   const [date, setDate] = useState('');
   const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
   const [customDivision, setCustomDivision] = useState('');
-  const [courses, setCourses] = useState<CourseConfig[]>([{ course: 1, targets: 10 }]);
+  const [courses, setCourses] = useState<CourseConfig[]>([{ course: 1, name: '', targets: 10 }]);
 
   if (!user) {
     return (
@@ -65,7 +66,7 @@ export default function TournamentCreate() {
   };
 
   const addCourse = () => {
-    setCourses((prev) => [...prev, { course: prev.length + 1, targets: 10 }]);
+    setCourses((prev) => [...prev, { course: prev.length + 1, name: '', targets: 10 }]);
   };
 
   const removeCourse = (index: number) => {
@@ -78,6 +79,10 @@ export default function TournamentCreate() {
 
   const updateCourseTargets = (index: number, targets: number) => {
     setCourses((prev) => prev.map((c, i) => (i === index ? { ...c, targets } : c)));
+  };
+
+  const updateCourseName = (index: number, name: string) => {
+    setCourses((prev) => prev.map((c, i) => (i === index ? { ...c, name } : c)));
   };
 
   const totalTargets = courses.reduce((sum, c) => sum + c.targets, 0);
@@ -217,17 +222,24 @@ export default function TournamentCreate() {
                   key={idx}
                   className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50"
                 >
-                  <span className="text-sm font-medium text-emerald-400 w-20">
-                    Course {course.course}
+                  <span className="text-sm font-medium text-emerald-400 shrink-0">
+                    #{course.course}
                   </span>
-                  <div className="flex items-center gap-2 flex-1">
+                  <Input
+                    type="text"
+                    value={course.name}
+                    onChange={(e) => updateCourseName(idx, e.target.value)}
+                    placeholder={`Course ${course.course}`}
+                    className="bg-slate-900 border-slate-700 text-white flex-1 min-w-0"
+                  />
+                  <div className="flex items-center gap-2 shrink-0">
                     <Input
                       type="number"
                       min={1}
                       max={100}
                       value={course.targets}
                       onChange={(e) => updateCourseTargets(idx, parseInt(e.target.value) || 1)}
-                      className="bg-slate-900 border-slate-700 text-white w-24"
+                      className="bg-slate-900 border-slate-700 text-white w-20"
                     />
                     <span className="text-sm text-slate-500">targets</span>
                   </div>
@@ -235,7 +247,7 @@ export default function TournamentCreate() {
                     <button
                       type="button"
                       onClick={() => removeCourse(idx)}
-                      className="text-slate-500 hover:text-red-400 transition-colors"
+                      className="text-slate-500 hover:text-red-400 transition-colors shrink-0"
                     >
                       <X className="h-4 w-4" />
                     </button>

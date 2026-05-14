@@ -6,6 +6,7 @@ import { BarChart3, RefreshCw, Trophy, Medal } from 'lucide-react';
 
 interface CourseConfig {
   course: number;
+  name?: string;
   targets: number;
 }
 
@@ -154,7 +155,7 @@ export default function Leaderboard() {
                 <SelectItem value="all" className="text-white">All Courses</SelectItem>
                 {coursesConfig.map((c) => (
                   <SelectItem key={c.course} value={c.course.toString()} className="text-white">
-                    Course {c.course} ({c.targets} targets)
+                    {c.name || `Course ${c.course}`} ({c.targets} targets)
                   </SelectItem>
                 ))}
               </SelectContent>

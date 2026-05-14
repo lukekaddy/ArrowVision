@@ -8,6 +8,7 @@ import { ClipboardList, ChevronLeft, ChevronRight, CheckCircle } from 'lucide-re
 
 interface CourseConfig {
   course: number;
+  name?: string;
   targets: number;
 }
 
@@ -163,7 +164,7 @@ export default function Scorecard() {
                   <SelectContent className="bg-slate-800 border-slate-700">
                     {coursesConfig.map((c) => (
                       <SelectItem key={c.course} value={c.course.toString()} className="text-white">
-                        Course {c.course} ({c.targets} targets)
+                        {c.name || `Course ${c.course}`} ({c.targets} targets)
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -198,7 +199,7 @@ export default function Scorecard() {
                     <ChevronLeft className="h-6 w-6" />
                   </Button>
                   <div className="text-center">
-                    {selectedCourse && <p className="text-emerald-400 text-xs font-medium">Course {selectedCourse.course}</p>}
+                    {selectedCourse && <p className="text-emerald-400 text-xs font-medium">{selectedCourse.name || `Course ${selectedCourse.course}`}</p>}
                     <p className="text-slate-400 text-sm">Target</p>
                     <p className="text-3xl font-bold text-white">{currentTarget}</p>
                     <p className="text-slate-500 text-xs">of {maxTargets}</p>
@@ -238,7 +239,7 @@ export default function Scorecard() {
                     <CheckCircle className="h-8 w-8 text-emerald-400 mx-auto mb-2" />
                     <p className="text-emerald-400 font-semibold">
                       Score {lastScore === 0 ? 'Miss' : lastScore} recorded
-                      {selectedCourse ? ` · Course ${selectedCourse.course}` : ''} · Target {currentTarget}
+                      {selectedCourse ? ` · ${selectedCourse.name || `Course ${selectedCourse.course}`}` : ''} · Target {currentTarget}
                     </p>
                   </div>
                 )}
