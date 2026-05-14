@@ -1,0 +1,42 @@
+{
+    "title": "tournaments",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "Organizer user ID"
+        },
+        "name": {
+            "type": "string",
+            "description": "Tournament name"
+        },
+        "date": {
+            "type": "string",
+            "description": "Tournament date"
+        },
+        "num_targets": {
+            "type": "integer",
+            "description": "Number of targets"
+        },
+        "divisions": {
+            "type": "string",
+            "description": "JSON array of division/class names"
+        },
+        "status": {
+            "type": "string",
+            "description": "Tournament status: draft, active, completed"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "name",
+        "date",
+        "num_targets",
+        "status"
+    ]
+}

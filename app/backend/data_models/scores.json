@@ -1,0 +1,42 @@
+{
+    "title": "scores",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID of scorer"
+        },
+        "tournament_id": {
+            "type": "integer",
+            "description": "FK to tournaments"
+        },
+        "archer_id": {
+            "type": "integer",
+            "description": "FK to tournament_archers"
+        },
+        "target_number": {
+            "type": "integer",
+            "description": "Target number"
+        },
+        "score_value": {
+            "type": "integer",
+            "description": "Score: 10, 8, 5, or 0 for miss"
+        },
+        "confirmed": {
+            "type": "boolean",
+            "description": "Whether score is confirmed by group"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "tournament_id",
+        "archer_id",
+        "target_number",
+        "score_value"
+    ]
+}

@@ -1,0 +1,45 @@
+{
+    "title": "tournament_archers",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID of the archer or organizer who registered"
+        },
+        "tournament_id": {
+            "type": "integer",
+            "description": "FK to tournaments"
+        },
+        "archer_name": {
+            "type": "string",
+            "description": "Archer display name"
+        },
+        "division": {
+            "type": "string",
+            "description": "Division/class"
+        },
+        "group_number": {
+            "type": "integer",
+            "description": "Shooting group number"
+        },
+        "target_number": {
+            "type": "integer",
+            "description": "Assigned target number"
+        },
+        "role": {
+            "type": "string",
+            "description": "Role: archer, scorekeeper, organizer"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "tournament_id",
+        "archer_name",
+        "role"
+    ]
+}

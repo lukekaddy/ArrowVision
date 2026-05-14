@@ -1,0 +1,117 @@
+Build a mobile-first app for archery tournament scoring and management called “ArrowLive”.
+
+The app should feel modern, simple, outdoor-friendly, and optimized for quick use during tournaments.
+
+MAIN GOAL:
+Replace paper scorecards and allow tournament organizers and archers to manage tournaments digitally with live scoring and leaderboard updates.
+
+TARGET USERS:
+
+1. Tournament organizers
+2. Archers
+3. Scorekeepers
+
+CORE FEATURES:
+
+AUTHENTICATION
+
+* Login / Signup
+* Organizer accounts
+* Archer accounts
+
+HOME SCREEN
+
+* Upcoming tournaments
+* Current tournament status
+* Quick access to scorecards
+* Live leaderboard button
+
+TOURNAMENT MANAGEMENT (Organizer)
+
+* Create tournament
+* Tournament name
+* Date
+* Number of targets
+* Archer divisions/classes
+* Assign shooting groups
+* Assign archers to targets
+* Start/end tournament
+
+ARCHER SCORECARD SCREEN
+
+* Mobile-friendly score entry
+* One target at a time
+* Display:
+
+  * Target number
+  * Shooter names
+  * Score buttons: 10 / 8 / 5 / Miss
+* Easy tap interface for outdoor use
+* Save score instantly
+* Confirm group scores
+
+LIVE LEADERBOARD
+
+* Real-time ranking updates
+* Filter by division/class
+* Sort by highest score
+* Show:
+
+  * Archer name
+  * Total score
+  * Rank
+  * Targets completed
+
+SMART SCORING PROTOTYPE SCREEN
+This is a prototype workflow only.
+
+Create a “Smart Score” screen with:
+
+1. Button: “Capture Before”
+2. Button: “Capture After”
+3. Display both images side-by-side
+4. Highlight area where image changed
+5. Allow user to manually confirm score:
+
+   * 10
+   * 8
+   * 5
+   * Miss
+6. Save score to leaderboard
+
+This screen should look like a future AI-assisted scoring feature.
+
+ORGANIZER DASHBOARD
+
+* Live tournament monitoring
+* View all groups
+* Edit scores manually
+* Resolve disputes
+* Export results
+
+RESULTS SCREEN
+
+* Final rankings
+* Printable/shareable results
+* Instant publishing
+
+DESIGN STYLE:
+
+* Dark modern UI
+* Outdoor/sports aesthetic
+* Large buttons
+* Fast navigation
+* Minimal clutter
+* Mobile-first design
+* Inspired by sports scoring apps
+
+TECHNICAL REQUIREMENTS:
+
+* Use Firebase or Supabase backend
+* Real-time score updates
+* Responsive mobile layout
+* Camera access enabled for Smart Score screen
+* Offline-friendly behavior if possible
+
+IMPORTANT:
+This is an MVP prototype for validating tournament workflows and smart scoring concepts. Prioritize simplicity, usability, and speed over advanced AI features.
