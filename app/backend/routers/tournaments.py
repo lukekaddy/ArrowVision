@@ -23,10 +23,10 @@ router = APIRouter(prefix="/api/v1/entities/tournaments", tags=["tournaments"])
 class TournamentsData(BaseModel):
     """Entity data schema (for create/update)"""
     name: str
-    date: str
-    num_targets: int
+    date: str = None
+    num_targets: int = None
     divisions: str = None
-    status: str
+    status: str = None
     courses: str = None
 
 
@@ -45,10 +45,10 @@ class TournamentsResponse(BaseModel):
     id: int
     user_id: str
     name: str
-    date: str
-    num_targets: int
+    date: Optional[str] = None
+    num_targets: Optional[int] = None
     divisions: Optional[str] = None
-    status: str
+    status: Optional[str] = None
     courses: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

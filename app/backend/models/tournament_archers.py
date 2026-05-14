@@ -14,6 +14,6 @@ class Tournament_archers(Base):
     division = Column(String, nullable=True)
     group_number = Column(Integer, nullable=True)
     target_number = Column(Integer, nullable=True)
-    role = Column(String, nullable=False)
+    role = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=datetime.now)
     updated_at = Column(DateTime(timezone=True), default=datetime.now, onupdate=datetime.now)

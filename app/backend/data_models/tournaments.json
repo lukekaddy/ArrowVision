@@ -24,7 +24,7 @@
         },
         "divisions": {
             "type": "string",
-            "description": "Divisions JSON"
+            "description": "Divisions JSON string"
         },
         "status": {
             "type": "string",
@@ -32,15 +32,12 @@
         },
         "courses": {
             "type": "string",
-            "description": "Courses JSON array"
+            "description": "Courses configuration JSON string"
         }
     },
     "required": [
         "id",
         "user_id",
-        "name",
-        "date",
-        "num_targets",
-        "status"
+        "name"
     ]
 }

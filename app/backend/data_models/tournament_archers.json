@@ -8,38 +8,37 @@
         },
         "user_id": {
             "type": "string",
-            "description": "User ID of the archer or organizer who registered"
+            "description": "User ID"
         },
         "tournament_id": {
             "type": "integer",
-            "description": "FK to tournaments"
+            "description": "Tournament ID reference"
         },
         "archer_name": {
             "type": "string",
-            "description": "Archer display name"
+            "description": "Archer name"
         },
         "division": {
             "type": "string",
-            "description": "Division/class"
+            "description": "Archer division"
         },
         "group_number": {
             "type": "integer",
-            "description": "Shooting group number"
+            "description": "Group number"
         },
         "target_number": {
             "type": "integer",
-            "description": "Assigned target number"
+            "description": "Target number assignment"
         },
         "role": {
             "type": "string",
-            "description": "Role: archer, scorekeeper, organizer"
+            "description": "Role (archer or scorekeeper)"
         }
     },
     "required": [
         "id",
         "user_id",
         "tournament_id",
-        "archer_name",
-        "role"
+        "archer_name"
     ]
 }

@@ -27,7 +27,7 @@ class Tournament_archersData(BaseModel):
     division: str = None
     group_number: int = None
     target_number: int = None
-    role: str
+    role: str = None
 
 
 class Tournament_archersUpdateData(BaseModel):
@@ -49,7 +49,7 @@ class Tournament_archersResponse(BaseModel):
     division: Optional[str] = None
     group_number: Optional[int] = None
     target_number: Optional[int] = None
-    role: str
+    role: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

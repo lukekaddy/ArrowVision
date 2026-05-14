@@ -23,10 +23,10 @@ router = APIRouter(prefix="/api/v1/entities/scores", tags=["scores"])
 class ScoresData(BaseModel):
     """Entity data schema (for create/update)"""
     tournament_id: int
-    archer_id: int
-    target_number: int
+    archer_id: int = None
+    target_number: int = None
+    score_value: int = None
     course_number: int = None
-    score_value: int
     confirmed: bool = None
 
 
@@ -35,8 +35,8 @@ class ScoresUpdateData(BaseModel):
     tournament_id: Optional[int] = None
     archer_id: Optional[int] = None
     target_number: Optional[int] = None
-    course_number: Optional[int] = None
     score_value: Optional[int] = None
+    course_number: Optional[int] = None
     confirmed: Optional[bool] = None
 
 
@@ -45,10 +45,10 @@ class ScoresResponse(BaseModel):
     id: int
     user_id: str
     tournament_id: int
-    archer_id: int
-    target_number: int
+    archer_id: Optional[int] = None
+    target_number: Optional[int] = None
+    score_value: Optional[int] = None
     course_number: Optional[int] = None
-    score_value: int
     confirmed: Optional[bool] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

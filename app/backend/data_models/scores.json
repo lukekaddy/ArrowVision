@@ -12,23 +12,23 @@
         },
         "tournament_id": {
             "type": "integer",
-            "description": "Tournament ID"
+            "description": "Tournament ID reference"
         },
         "archer_id": {
             "type": "integer",
-            "description": "Archer ID"
+            "description": "Archer ID reference"
         },
         "target_number": {
             "type": "integer",
             "description": "Target number"
         },
-        "course_number": {
-            "type": "integer",
-            "description": "Course number"
-        },
         "score_value": {
             "type": "integer",
             "description": "Score value"
+        },
+        "course_number": {
+            "type": "integer",
+            "description": "Course number"
         },
         "confirmed": {
             "type": "boolean",
@@ -38,9 +38,6 @@
     "required": [
         "id",
         "user_id",
-        "tournament_id",
-        "archer_id",
-        "target_number",
-        "score_value"
+        "tournament_id"
     ]
 }
