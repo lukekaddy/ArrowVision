@@ -19,10 +19,23 @@ const DIVISION_OPTIONS = [
   'Olympic Recurve',
 ];
 
+const MULLIGAN_TYPE_OPTIONS = ['Mulligans', 'Doe Tags', 'Custom'];
+
 interface CourseConfig {
   course: number;
   name: string;
   targets: number;
+}
+
+interface MulliganType {
+  name: string;
+  maxAllowed: number;
+  restrictedTargets: number[];
+}
+
+interface MulliganConfig {
+  enabled: boolean;
+  types: MulliganType[];
 }
 
 export default function TournamentCreate() {
@@ -35,6 +48,14 @@ export default function TournamentCreate() {
   const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
   const [customDivision, setCustomDivision] = useState('');
   const [courses, setCourses] = useState<CourseConfig[]>([{ course: 1, name: '', targets: 10 }]);
+
+  // Mulligan state
+  const [mulligansEnabled, setMulligansEnabled] = useState(false);
+  const [selectedMulliganTypes, setSelectedMulliganTypes] = useState<string[]>([]);
+  const [customMulliganName, setCustomMulliganName] = useState('');
+  const [mulliganMaxAllowed, setMulliganMaxAllowed] = useState<Record<string, number>>({});
+  const [mulliganRestricted, setMulliganRestricted] = useState<Record<string, boolean>>({});
+  const [mulliganRestrictedTargets, setMulliganRestrictedTargets] = useState<Record<string, string>>({});
 
   if (!user) {
     return (
@@ -81,17 +102,52 @@ export default function TournamentCreate() {
     setCourses((prev) => prev.map((c, i) => (i === index ? { ...c, targets } : c)));
   };
 
-  const updateCourseName = (index: number, name: string) => {
-    setCourses((prev) => prev.map((c, i) => (i === index ? { ...c, name } : c)));
+  const updateCourseName = (index: number, courseName: string) => {
+    setCourses((prev) => prev.map((c, i) => (i === index ? { ...c, name: courseName } : c)));
   };
 
   const totalTargets = courses.reduce((sum, c) => sum + c.targets, 0);
+
+  // Mulligan helpers
+  const toggleMulliganType = (type: string) => {
+    setSelectedMulliganTypes((prev) => {
+      if (prev.includes(type)) {
+        return prev.filter((t) => t !== type);
+      }
+      return [...prev, type];
+    });
+  };
+
+  const getMulliganTypeName = (type: string) => {
+    if (type === 'Custom') return customMulliganName.trim() || 'Custom';
+    return type;
+  };
+
+  const buildMulliganConfig = (): MulliganConfig => {
+    if (!mulligansEnabled) {
+      return { enabled: false, types: [] };
+    }
+    const types: MulliganType[] = selectedMulliganTypes.map((type) => {
+      const typeName = getMulliganTypeName(type);
+      const maxAllowed = mulliganMaxAllowed[type] || 1;
+      const restricted = mulliganRestricted[type] || false;
+      const restrictedTargets = restricted
+        ? (mulliganRestrictedTargets[type] || '')
+            .split(',')
+            .map((s) => parseInt(s.trim()))
+            .filter((n) => !isNaN(n))
+        : [];
+      return { name: typeName, maxAllowed, restrictedTargets };
+    });
+    return { enabled: true, types };
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !date) return;
     setSaving(true);
     try {
+      const mulliganConfig = buildMulliganConfig();
       const res = await client.entities.tournaments.create({
         data: {
           name,
@@ -99,6 +155,7 @@ export default function TournamentCreate() {
           num_targets: totalTargets,
           divisions: selectedDivisions.join(','),
           courses: JSON.stringify(courses),
+          mulligans: JSON.stringify(mulliganConfig),
           status: 'auto',
         },
       });
@@ -147,13 +204,12 @@ export default function TournamentCreate() {
             />
             {date && (
               <p className="text-xs text-slate-500 mt-1">
-                Status will be automatically determined: {
-                  date === new Date().toISOString().split('T')[0]
-                    ? '🟢 Active (today)'
-                    : date > new Date().toISOString().split('T')[0]
-                    ? '🔵 Upcoming'
-                    : '⚪ Completed'
-                }
+                Status will be automatically determined:{' '}
+                {date === new Date().toISOString().split('T')[0]
+                  ? '🟢 Active (today)'
+                  : date > new Date().toISOString().split('T')[0]
+                  ? '🔵 Upcoming'
+                  : '⚪ Completed'}
               </p>
             )}
           </div>
@@ -185,9 +241,19 @@ export default function TournamentCreate() {
                 onChange={(e) => setCustomDivision(e.target.value)}
                 placeholder="Add custom division..."
                 className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 flex-1"
-                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomDivision(); } }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addCustomDivision();
+                  }
+                }}
               />
-              <Button type="button" onClick={addCustomDivision} variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700/50">
+              <Button
+                type="button"
+                onClick={addCustomDivision}
+                variant="outline"
+                className="border-slate-600 text-slate-300 hover:bg-slate-700/50"
+              >
                 Add
               </Button>
             </div>
@@ -263,6 +329,132 @@ export default function TournamentCreate() {
             >
               <Plus className="h-4 w-4" /> Add Course
             </Button>
+          </div>
+
+          {/* Mulligans */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <Label className="text-slate-300">Tournament Allows Mulligans</Label>
+              <button
+                type="button"
+                onClick={() => setMulligansEnabled(!mulligansEnabled)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  mulligansEnabled ? 'bg-emerald-500' : 'bg-slate-700'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    mulligansEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {mulligansEnabled && (
+              <div className="space-y-4 p-4 rounded-lg bg-slate-800/50 border border-slate-700/50">
+                <p className="text-sm text-slate-400">Select mulligan types available in this tournament:</p>
+                <div className="flex flex-wrap gap-2">
+                  {MULLIGAN_TYPE_OPTIONS.map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => toggleMulliganType(type)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                        selectedMulliganTypes.includes(type)
+                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                          : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-600'
+                      }`}
+                    >
+                      {selectedMulliganTypes.includes(type) && (
+                        <Check className="h-3 w-3 inline mr-1" />
+                      )}
+                      {type}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Custom name input */}
+                {selectedMulliganTypes.includes('Custom') && (
+                  <div>
+                    <Label className="text-slate-400 text-xs mb-1 block">Custom Mulligan Name</Label>
+                    <Input
+                      value={customMulliganName}
+                      onChange={(e) => setCustomMulliganName(e.target.value)}
+                      placeholder="e.g. Bonus Shot"
+                      className="bg-slate-900 border-slate-700 text-white placeholder:text-slate-500"
+                    />
+                  </div>
+                )}
+
+                {/* Config for each selected type */}
+                {selectedMulliganTypes.map((type) => (
+                  <div
+                    key={type}
+                    className="p-3 rounded-lg bg-slate-900/50 border border-slate-700/30 space-y-3"
+                  >
+                    <p className="text-sm font-medium text-white">
+                      {getMulliganTypeName(type)}
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <Label className="text-slate-400 text-xs shrink-0">Max Allowed</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={99}
+                        value={mulliganMaxAllowed[type] || 1}
+                        onChange={(e) =>
+                          setMulliganMaxAllowed((prev) => ({
+                            ...prev,
+                            [type]: parseInt(e.target.value) || 1,
+                          }))
+                        }
+                        className="bg-slate-800 border-slate-700 text-white w-20"
+                        required
+                      />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-slate-400 text-xs">Restricted to Certain Targets</Label>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setMulliganRestricted((prev) => ({
+                            ...prev,
+                            [type]: !prev[type],
+                          }))
+                        }
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                          mulliganRestricted[type] ? 'bg-amber-500' : 'bg-slate-700'
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                            mulliganRestricted[type] ? 'translate-x-5' : 'translate-x-1'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    {mulliganRestricted[type] && (
+                      <div>
+                        <Input
+                          value={mulliganRestrictedTargets[type] || ''}
+                          onChange={(e) =>
+                            setMulliganRestrictedTargets((prev) => ({
+                              ...prev,
+                              [type]: e.target.value,
+                            }))
+                          }
+                          placeholder="e.g. 5, 10, 15"
+                          className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+                        />
+                        <p className="text-xs text-slate-500 mt-1">
+                          Comma-separated target numbers where this mulligan can be used
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <Button

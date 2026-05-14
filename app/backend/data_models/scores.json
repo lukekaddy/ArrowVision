@@ -12,11 +12,11 @@
         },
         "tournament_id": {
             "type": "integer",
-            "description": "Tournament ID reference"
+            "description": "Tournament ID"
         },
         "archer_id": {
             "type": "integer",
-            "description": "Archer ID reference"
+            "description": "Archer ID"
         },
         "target_number": {
             "type": "integer",

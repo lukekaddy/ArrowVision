@@ -107,10 +107,14 @@ class TournamentOpsService:
             user_id=user_id,
             tournament_id=data["tournament_id"],
             archer_name=data["archer_name"],
+            first_name=data.get("first_name"),
+            last_name=data.get("last_name"),
+            phone=data.get("phone"),
             division=data.get("division", ""),
             group_number=data.get("group_number"),
             target_number=data.get("target_number"),
             role=data.get("role", "archer"),
+            purchased_mulligans=data.get("purchased_mulligans"),
         )
         self.db.add(archer)
         await self.db.commit()
@@ -210,6 +214,7 @@ class TournamentOpsService:
             "num_targets": t.num_targets,
             "divisions": t.divisions,
             "courses": t.courses,
+            "mulligans": t.mulligans,
             "status": t.status,
             "created_at": t.created_at.isoformat() if t.created_at else None,
             "updated_at": t.updated_at.isoformat() if t.updated_at else None,
@@ -221,10 +226,14 @@ class TournamentOpsService:
             "user_id": a.user_id,
             "tournament_id": a.tournament_id,
             "archer_name": a.archer_name,
+            "first_name": a.first_name,
+            "last_name": a.last_name,
+            "phone": a.phone,
             "division": a.division,
             "group_number": a.group_number,
             "target_number": a.target_number,
             "role": a.role,
+            "purchased_mulligans": a.purchased_mulligans,
             "created_at": a.created_at.isoformat() if a.created_at else None,
         }
 

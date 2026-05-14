@@ -23,21 +23,29 @@ router = APIRouter(prefix="/api/v1/entities/tournament_archers", tags=["tourname
 class Tournament_archersData(BaseModel):
     """Entity data schema (for create/update)"""
     tournament_id: int
-    archer_name: str
+    archer_name: str = None
+    first_name: str = None
+    last_name: str = None
+    phone: str = None
     division: str = None
     group_number: int = None
     target_number: int = None
     role: str = None
+    purchased_mulligans: str = None
 
 
 class Tournament_archersUpdateData(BaseModel):
     """Update entity data (partial updates allowed)"""
     tournament_id: Optional[int] = None
     archer_name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: Optional[str] = None
     division: Optional[str] = None
     group_number: Optional[int] = None
     target_number: Optional[int] = None
     role: Optional[str] = None
+    purchased_mulligans: Optional[str] = None
 
 
 class Tournament_archersResponse(BaseModel):
@@ -45,11 +53,15 @@ class Tournament_archersResponse(BaseModel):
     id: int
     user_id: str
     tournament_id: int
-    archer_name: str
+    archer_name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: Optional[str] = None
     division: Optional[str] = None
     group_number: Optional[int] = None
     target_number: Optional[int] = None
     role: Optional[str] = None
+    purchased_mulligans: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

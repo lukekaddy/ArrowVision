@@ -15,5 +15,6 @@ class Tournaments(Base):
     divisions = Column(String, nullable=True)
     status = Column(String, nullable=True)
     courses = Column(String, nullable=True)
+    mulligans = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=datetime.now)
     updated_at = Column(DateTime(timezone=True), default=datetime.now, onupdate=datetime.now)

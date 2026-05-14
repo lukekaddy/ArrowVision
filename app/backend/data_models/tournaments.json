@@ -24,7 +24,7 @@
         },
         "divisions": {
             "type": "string",
-            "description": "Divisions JSON string"
+            "description": "Comma-separated divisions"
         },
         "status": {
             "type": "string",
@@ -32,7 +32,11 @@
         },
         "courses": {
             "type": "string",
-            "description": "Courses configuration JSON string"
+            "description": "JSON string of course configurations"
+        },
+        "mulligans": {
+            "type": "string",
+            "description": "JSON string of mulligan configurations"
         }
     },
     "required": [

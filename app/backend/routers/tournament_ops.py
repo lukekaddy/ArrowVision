@@ -18,10 +18,14 @@ router = APIRouter(prefix="/api/v1/tournament", tags=["tournament-ops"])
 class RegisterArcherRequest(BaseModel):
     tournament_id: int
     archer_name: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: Optional[str] = None
     division: str = ""
     role: str = "archer"
     group_number: Optional[int] = None
     target_number: Optional[int] = None
+    purchased_mulligans: Optional[str] = None
 
 
 class SubmitScoreRequest(BaseModel):

@@ -28,6 +28,7 @@ class TournamentsData(BaseModel):
     divisions: str = None
     status: str = None
     courses: str = None
+    mulligans: str = None
 
 
 class TournamentsUpdateData(BaseModel):
@@ -38,6 +39,7 @@ class TournamentsUpdateData(BaseModel):
     divisions: Optional[str] = None
     status: Optional[str] = None
     courses: Optional[str] = None
+    mulligans: Optional[str] = None
 
 
 class TournamentsResponse(BaseModel):
@@ -50,6 +52,7 @@ class TournamentsResponse(BaseModel):
     divisions: Optional[str] = None
     status: Optional[str] = None
     courses: Optional[str] = None
+    mulligans: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

@@ -21,6 +21,8 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 - [x] Build Organizer Dashboard page
 - [x] Build Results page
 - [x] Configure routing in App.tsx
+- [x] Add mulligan support to Create Tournament page
+- [x] Update archer registration with first/last name, phone, division dropdown, purchased mulligans
 
 ## Progress Log
 - Backend tables created: tournaments, tournament_archers, scores
@@ -35,3 +37,7 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 - Fixed: Database schema synced - all columns now exist in actual DB tables
 - Updated: Courses now support custom names - text input for name + number input for targets in TournamentCreate
 - Updated: Leaderboard and Scorecard show course names with fallback to "Course N"
+- Added: Mulligan support in TournamentCreate - toggle to enable, multi-pick types (Mulligans/Doe Tags/Custom), max allowed per type, restricted targets option
+- Updated: Archer registration in TournamentDashboard - first/last name, phone, division dropdown from tournament config, purchased mulligans toggle with type/count inputs
+- Backend: Added mulligans column to tournaments, first_name/last_name/phone/purchased_mulligans to tournament_archers
+- Backend: Updated register-archer endpoint and service to handle new fields
