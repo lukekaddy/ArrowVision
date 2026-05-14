@@ -30,6 +30,7 @@ class SubmitScoreRequest(BaseModel):
     target_number: int
     score_value: int
     confirmed: bool = False
+    course_number: Optional[int] = None
 
 
 class UpdateScoreRequest(BaseModel):
@@ -76,12 +77,13 @@ async def get_tournament_public(
 async def get_leaderboard(
     tournament_id: int,
     division: Optional[str] = Query(None),
+    course_number: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Get leaderboard for a tournament (public)"""
     service = TournamentOpsService(db)
     try:
-        return await service.get_leaderboard(tournament_id, division=division)
+        return await service.get_leaderboard(tournament_id, division=division, course_number=course_number)
     except Exception as e:
         logger.error(f"Error fetching leaderboard: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

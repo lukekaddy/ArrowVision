@@ -6,11 +6,17 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ClipboardList, ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
 
+interface CourseConfig {
+  course: number;
+  targets: number;
+}
+
 interface Tournament {
   id: number;
   name: string;
   num_targets: number;
   status: string;
+  courses?: string;
 }
 
 interface Archer {
@@ -24,6 +30,8 @@ export default function Scorecard() {
   const client = getClient();
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
+  const [coursesConfig, setCoursesConfig] = useState<CourseConfig[]>([]);
+  const [selectedCourse, setSelectedCourse] = useState<CourseConfig | null>(null);
   const [archers, setArchers] = useState<Archer[]>([]);
   const [currentTarget, setCurrentTarget] = useState(1);
   const [selectedArcher, setSelectedArcher] = useState<Archer | null>(null);
@@ -49,6 +57,17 @@ export default function Scorecard() {
     setCurrentTarget(1);
     setSelectedArcher(null);
     setLastScore(null);
+    setSelectedCourse(null);
+
+    let parsed: CourseConfig[] = [];
+    if (t.courses) {
+      try { parsed = JSON.parse(t.courses); } catch { parsed = []; }
+    }
+    setCoursesConfig(parsed);
+    if (parsed.length === 1) {
+      setSelectedCourse(parsed[0]);
+    }
+
     try {
       const res = await client.apiCall.invoke({ url: `/api/v1/tournament/archers/${id}`, method: 'GET', data: {} });
       setArchers(res?.data || []);
@@ -57,19 +76,32 @@ export default function Scorecard() {
     }
   };
 
+  const selectCourse = (courseNum: string) => {
+    const c = coursesConfig.find((c) => c.course === parseInt(courseNum));
+    setSelectedCourse(c || null);
+    setCurrentTarget(1);
+    setLastScore(null);
+  };
+
+  const maxTargets = selectedCourse?.targets || selectedTournament?.num_targets || 10;
+
   const submitScore = async (scoreValue: number) => {
     if (!selectedTournament || !selectedArcher) return;
     setSubmitting(true);
     try {
+      const payload: Record<string, unknown> = {
+        tournament_id: selectedTournament.id,
+        archer_id: selectedArcher.id,
+        target_number: currentTarget,
+        score_value: scoreValue,
+      };
+      if (selectedCourse) {
+        payload.course_number = selectedCourse.course;
+      }
       await client.apiCall.invoke({
         url: '/api/v1/tournament/submit-score',
         method: 'POST',
-        data: {
-          tournament_id: selectedTournament.id,
-          archer_id: selectedArcher.id,
-          target_number: currentTarget,
-          score_value: scoreValue,
-        },
+        data: payload,
       });
       setLastScore(scoreValue);
     } catch (err) {
@@ -106,7 +138,7 @@ export default function Scorecard() {
         </h1>
 
         {/* Tournament Select */}
-        <div className="mb-6">
+        <div className="mb-4">
           <Select onValueChange={selectTournament}>
             <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-12">
               <SelectValue placeholder="Select Tournament" />
@@ -121,6 +153,24 @@ export default function Scorecard() {
 
         {selectedTournament && (
           <>
+            {/* Course Select (if multiple courses) */}
+            {coursesConfig.length > 1 && (
+              <div className="mb-4">
+                <Select onValueChange={selectCourse}>
+                  <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-12">
+                    <SelectValue placeholder="Select Course" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-slate-800 border-slate-700">
+                    {coursesConfig.map((c) => (
+                      <SelectItem key={c.course} value={c.course.toString()} className="text-white">
+                        Course {c.course} ({c.targets} targets)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             {/* Archer Select */}
             <div className="mb-6">
               <Select onValueChange={(v) => { setSelectedArcher(archers.find((a) => a.id === parseInt(v)) || null); setLastScore(null); }}>
@@ -135,7 +185,7 @@ export default function Scorecard() {
               </Select>
             </div>
 
-            {selectedArcher && (
+            {selectedArcher && (coursesConfig.length <= 1 || selectedCourse) && (
               <>
                 {/* Target Navigation */}
                 <div className="flex items-center justify-between mb-6 bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
@@ -148,14 +198,15 @@ export default function Scorecard() {
                     <ChevronLeft className="h-6 w-6" />
                   </Button>
                   <div className="text-center">
+                    {selectedCourse && <p className="text-emerald-400 text-xs font-medium">Course {selectedCourse.course}</p>}
                     <p className="text-slate-400 text-sm">Target</p>
                     <p className="text-3xl font-bold text-white">{currentTarget}</p>
-                    <p className="text-slate-500 text-xs">of {selectedTournament.num_targets}</p>
+                    <p className="text-slate-500 text-xs">of {maxTargets}</p>
                   </div>
                   <Button
                     variant="ghost"
-                    onClick={() => { setCurrentTarget(Math.min(selectedTournament.num_targets, currentTarget + 1)); setLastScore(null); }}
-                    disabled={currentTarget >= selectedTournament.num_targets}
+                    onClick={() => { setCurrentTarget(Math.min(maxTargets, currentTarget + 1)); setLastScore(null); }}
+                    disabled={currentTarget >= maxTargets}
                     className="text-slate-300 hover:text-white"
                   >
                     <ChevronRight className="h-6 w-6" />
@@ -186,7 +237,8 @@ export default function Scorecard() {
                   <div className="text-center py-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
                     <CheckCircle className="h-8 w-8 text-emerald-400 mx-auto mb-2" />
                     <p className="text-emerald-400 font-semibold">
-                      Score {lastScore === 0 ? 'Miss' : lastScore} recorded for Target {currentTarget}
+                      Score {lastScore === 0 ? 'Miss' : lastScore} recorded
+                      {selectedCourse ? ` · Course ${selectedCourse.course}` : ''} · Target {currentTarget}
                     </p>
                   </div>
                 )}

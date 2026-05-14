@@ -12,6 +12,7 @@ class Scores(Base):
     tournament_id = Column(Integer, nullable=False)
     archer_id = Column(Integer, nullable=False)
     target_number = Column(Integer, nullable=False)
+    course_number = Column(Integer, nullable=True)
     score_value = Column(Integer, nullable=False)
     confirmed = Column(Boolean, nullable=True)
     created_at = Column(DateTime(timezone=True), default=datetime.now)

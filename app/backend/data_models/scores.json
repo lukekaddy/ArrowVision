@@ -8,27 +8,31 @@
         },
         "user_id": {
             "type": "string",
-            "description": "User ID of scorer"
+            "description": "User ID"
         },
         "tournament_id": {
             "type": "integer",
-            "description": "FK to tournaments"
+            "description": "Tournament ID"
         },
         "archer_id": {
             "type": "integer",
-            "description": "FK to tournament_archers"
+            "description": "Archer ID"
         },
         "target_number": {
             "type": "integer",
             "description": "Target number"
         },
+        "course_number": {
+            "type": "integer",
+            "description": "Course number"
+        },
         "score_value": {
             "type": "integer",
-            "description": "Score: 10, 8, 5, or 0 for miss"
+            "description": "Score value"
         },
         "confirmed": {
             "type": "boolean",
-            "description": "Whether score is confirmed by group"
+            "description": "Whether score is confirmed"
         }
     },
     "required": [

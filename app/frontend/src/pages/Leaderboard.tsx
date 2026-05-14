@@ -1,14 +1,19 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import Layout from '@/components/Layout';
 import { getClient } from '@/lib/client';
-import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { BarChart3, RefreshCw, Trophy, Medal } from 'lucide-react';
+
+interface CourseConfig {
+  course: number;
+  targets: number;
+}
 
 interface Tournament {
   id: number;
   name: string;
   divisions?: string;
+  courses?: string;
 }
 
 interface LeaderboardEntry {
@@ -25,6 +30,8 @@ export default function Leaderboard() {
   const [selectedId, setSelectedId] = useState<string>('');
   const [division, setDivision] = useState<string>('');
   const [divisions, setDivisions] = useState<string[]>([]);
+  const [courseNumber, setCourseNumber] = useState<string>('');
+  const [coursesConfig, setCoursesConfig] = useState<CourseConfig[]>([]);
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -41,12 +48,13 @@ export default function Leaderboard() {
     fetchTournaments();
   }, []);
 
-  const fetchLeaderboard = async (tournamentId: string, div?: string) => {
+  const fetchLeaderboard = useCallback(async (tournamentId: string, div?: string, course?: string) => {
     if (!tournamentId) return;
     setLoading(true);
     try {
       const params: Record<string, string> = {};
       if (div) params.division = div;
+      if (course) params.course_number = course;
       const res = await client.apiCall.invoke({
         url: `/api/v1/tournament/leaderboard/${tournamentId}`,
         method: 'GET',
@@ -58,28 +66,42 @@ export default function Leaderboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [client]);
 
   const selectTournament = (id: string) => {
     setSelectedId(id);
     setDivision('');
+    setCourseNumber('');
     const t = tournaments.find((t) => t.id === parseInt(id));
     setDivisions(t?.divisions ? t.divisions.split(',').map((d) => d.trim()).filter(Boolean) : []);
+
+    // Parse courses
+    let parsed: CourseConfig[] = [];
+    if (t?.courses) {
+      try { parsed = JSON.parse(t.courses); } catch { parsed = []; }
+    }
+    setCoursesConfig(parsed);
     fetchLeaderboard(id);
   };
 
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     if (selectedId) {
-      intervalRef.current = setInterval(() => fetchLeaderboard(selectedId, division), 10000);
+      intervalRef.current = setInterval(() => fetchLeaderboard(selectedId, division, courseNumber), 10000);
     }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [selectedId, division]);
+  }, [selectedId, division, courseNumber, fetchLeaderboard]);
 
   const handleDivisionChange = (d: string) => {
     const val = d === 'all' ? '' : d;
     setDivision(val);
-    fetchLeaderboard(selectedId, val);
+    fetchLeaderboard(selectedId, val, courseNumber);
+  };
+
+  const handleCourseChange = (c: string) => {
+    const val = c === 'all' ? '' : c;
+    setCourseNumber(val);
+    fetchLeaderboard(selectedId, division, val);
   };
 
   const getRankIcon = (rank: number) => {
@@ -96,6 +118,7 @@ export default function Leaderboard() {
           <BarChart3 className="h-8 w-8 text-emerald-400" /> Live Leaderboard
         </h1>
 
+        {/* Filters */}
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
           <Select onValueChange={selectTournament}>
             <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-12 flex-1">
@@ -110,7 +133,7 @@ export default function Leaderboard() {
 
           {divisions.length > 0 && (
             <Select value={division || 'all'} onValueChange={handleDivisionChange}>
-              <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-12 sm:w-48">
+              <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-12 sm:w-44">
                 <SelectValue placeholder="All Divisions" />
               </SelectTrigger>
               <SelectContent className="bg-slate-800 border-slate-700">
@@ -121,12 +144,29 @@ export default function Leaderboard() {
               </SelectContent>
             </Select>
           )}
+
+          {coursesConfig.length > 1 && (
+            <Select value={courseNumber || 'all'} onValueChange={handleCourseChange}>
+              <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-12 sm:w-44">
+                <SelectValue placeholder="All Courses" />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-800 border-slate-700">
+                <SelectItem value="all" className="text-white">All Courses</SelectItem>
+                {coursesConfig.map((c) => (
+                  <SelectItem key={c.course} value={c.course.toString()} className="text-white">
+                    Course {c.course} ({c.targets} targets)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
         {selectedId && (
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm text-slate-400">
               {loading ? 'Refreshing...' : `${entries.length} archers`}
+              {courseNumber && ` · Course ${courseNumber}`}
             </p>
             <div className="flex items-center gap-2 text-xs text-slate-500">
               <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />

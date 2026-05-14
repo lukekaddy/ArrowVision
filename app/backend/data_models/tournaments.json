@@ -8,7 +8,7 @@
         },
         "user_id": {
             "type": "string",
-            "description": "Organizer user ID"
+            "description": "User ID"
         },
         "name": {
             "type": "string",
@@ -24,11 +24,15 @@
         },
         "divisions": {
             "type": "string",
-            "description": "JSON array of division/class names"
+            "description": "Divisions JSON"
         },
         "status": {
             "type": "string",
-            "description": "Tournament status: draft, active, completed"
+            "description": "Tournament status"
+        },
+        "courses": {
+            "type": "string",
+            "description": "Courses JSON array"
         }
     },
     "required": [

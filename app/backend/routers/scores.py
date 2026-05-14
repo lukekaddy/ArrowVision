@@ -25,6 +25,7 @@ class ScoresData(BaseModel):
     tournament_id: int
     archer_id: int
     target_number: int
+    course_number: int = None
     score_value: int
     confirmed: bool = None
 
@@ -34,6 +35,7 @@ class ScoresUpdateData(BaseModel):
     tournament_id: Optional[int] = None
     archer_id: Optional[int] = None
     target_number: Optional[int] = None
+    course_number: Optional[int] = None
     score_value: Optional[int] = None
     confirmed: Optional[bool] = None
 
@@ -45,6 +47,7 @@ class ScoresResponse(BaseModel):
     tournament_id: int
     archer_id: int
     target_number: int
+    course_number: Optional[int] = None
     score_value: int
     confirmed: Optional[bool] = None
     created_at: Optional[datetime] = None

@@ -27,6 +27,7 @@ class TournamentsData(BaseModel):
     num_targets: int
     divisions: str = None
     status: str
+    courses: str = None
 
 
 class TournamentsUpdateData(BaseModel):
@@ -36,6 +37,7 @@ class TournamentsUpdateData(BaseModel):
     num_targets: Optional[int] = None
     divisions: Optional[str] = None
     status: Optional[str] = None
+    courses: Optional[str] = None
 
 
 class TournamentsResponse(BaseModel):
@@ -47,6 +49,7 @@ class TournamentsResponse(BaseModel):
     num_targets: int
     divisions: Optional[str] = None
     status: str
+    courses: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

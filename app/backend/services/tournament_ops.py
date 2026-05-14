@@ -1,4 +1,5 @@
 import logging
+from datetime import date as date_type, datetime
 from typing import Optional, Dict, Any, List
 from sqlalchemy import select, func, case, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,21 +17,23 @@ class TournamentOpsService:
         self.db = db
 
     async def get_public_tournaments(self, skip: int = 0, limit: int = 50) -> Dict[str, Any]:
-        """Get all active/completed tournaments (public)"""
-        query = select(Tournaments).where(
-            Tournaments.status.in_(["active", "completed"])
-        ).order_by(desc(Tournaments.created_at)).offset(skip).limit(limit)
+        """Get all tournaments (public) with computed status based on date"""
+        query = select(Tournaments).order_by(desc(Tournaments.created_at)).offset(skip).limit(limit)
         result = await self.db.execute(query)
         items = result.scalars().all()
 
-        count_query = select(func.count()).select_from(Tournaments).where(
-            Tournaments.status.in_(["active", "completed"])
-        )
+        count_query = select(func.count()).select_from(Tournaments)
         count_result = await self.db.execute(count_query)
         total = count_result.scalar() or 0
 
+        tournament_list = []
+        for t in items:
+            t_dict = self._tournament_to_dict(t)
+            t_dict["status"] = self._compute_status(t.date)
+            tournament_list.append(t_dict)
+
         return {
-            "items": [self._tournament_to_dict(t) for t in items],
+            "items": tournament_list,
             "total": total
         }
 
@@ -43,7 +46,7 @@ class TournamentOpsService:
             return None
         return self._tournament_to_dict(tournament)
 
-    async def get_leaderboard(self, tournament_id: int, division: Optional[str] = None) -> List[Dict]:
+    async def get_leaderboard(self, tournament_id: int, division: Optional[str] = None, course_number: Optional[int] = None) -> List[Dict]:
         """Get leaderboard for a tournament"""
         # Get all archers for this tournament
         archer_query = select(Tournament_archers).where(
@@ -65,6 +68,8 @@ class TournamentOpsService:
                 Scores.tournament_id == tournament_id,
                 Scores.archer_id == archer.id
             )
+            if course_number is not None:
+                score_query = score_query.where(Scores.course_number == course_number)
             score_result = await self.db.execute(score_query)
             score_row = score_result.one()
 
@@ -114,11 +119,12 @@ class TournamentOpsService:
 
     async def submit_score(self, data: Dict[str, Any], user_id: str) -> Dict:
         """Submit a score"""
-        # Check if score already exists for this archer at this target
+        # Check if score already exists for this archer at this target (and course)
         existing_query = select(Scores).where(
             Scores.tournament_id == data["tournament_id"],
             Scores.archer_id == data["archer_id"],
             Scores.target_number == data["target_number"],
+            Scores.course_number == data.get("course_number"),
         )
         existing_result = await self.db.execute(existing_query)
         existing = existing_result.scalar_one_or_none()
@@ -135,6 +141,7 @@ class TournamentOpsService:
             tournament_id=data["tournament_id"],
             archer_id=data["archer_id"],
             target_number=data["target_number"],
+            course_number=data.get("course_number"),
             score_value=data["score_value"],
             confirmed=data.get("confirmed", False),
         )
@@ -180,6 +187,20 @@ class TournamentOpsService:
             "scores": scores,
         }
 
+    def _compute_status(self, date_str: str) -> str:
+        """Compute tournament status based on date comparison to today"""
+        try:
+            tournament_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            today = date_type.today()
+            if tournament_date == today:
+                return "active"
+            elif tournament_date > today:
+                return "upcoming"
+            else:
+                return "completed"
+        except (ValueError, TypeError):
+            return "unknown"
+
     def _tournament_to_dict(self, t: Tournaments) -> Dict:
         return {
             "id": t.id,
@@ -188,6 +209,7 @@ class TournamentOpsService:
             "date": t.date,
             "num_targets": t.num_targets,
             "divisions": t.divisions,
+            "courses": t.courses,
             "status": t.status,
             "created_at": t.created_at.isoformat() if t.created_at else None,
             "updated_at": t.updated_at.isoformat() if t.updated_at else None,
@@ -213,6 +235,7 @@ class TournamentOpsService:
             "tournament_id": s.tournament_id,
             "archer_id": s.archer_id,
             "target_number": s.target_number,
+            "course_number": s.course_number,
             "score_value": s.score_value,
             "confirmed": s.confirmed,
             "created_at": s.created_at.isoformat() if s.created_at else None,

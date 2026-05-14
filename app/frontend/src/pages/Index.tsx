@@ -4,9 +4,14 @@ import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
-import { Trophy, ClipboardList, BarChart3, ArrowRight, Calendar, Users } from 'lucide-react';
+import { Trophy, ClipboardList, BarChart3, ArrowRight, Calendar, MapPin } from 'lucide-react';
 
 const HERO_URL = 'https://mgx-backend-cdn.metadl.com/generate/images/1230028/2026-05-14/orhcm3yaagpa/hero-archery-sunset.png';
+
+interface CourseConfig {
+  course: number;
+  targets: number;
+}
 
 interface Tournament {
   id: number;
@@ -15,10 +20,29 @@ interface Tournament {
   status: string;
   divisions?: string;
   num_targets?: number;
+  courses?: string;
+}
+
+function getStatusStyle(status: string) {
+  switch (status) {
+    case 'active':
+      return 'bg-emerald-500/20 text-emerald-400';
+    case 'upcoming':
+      return 'bg-blue-500/20 text-blue-400';
+    case 'completed':
+      return 'bg-slate-500/20 text-slate-400';
+    default:
+      return 'bg-amber-500/20 text-amber-400';
+  }
+}
+
+function parseCourses(coursesStr?: string): CourseConfig[] {
+  if (!coursesStr) return [];
+  try { return JSON.parse(coursesStr); } catch { return []; }
 }
 
 export default function Index() {
-  const { user, login, loading } = useAuth();
+  const { user, login } = useAuth();
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [loadingTournaments, setLoadingTournaments] = useState(true);
   const client = getClient();
@@ -88,7 +112,7 @@ export default function Index() {
       <section className="max-w-7xl mx-auto px-4 py-12">
         <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
           <Trophy className="h-6 w-6 text-emerald-400" />
-          Active Tournaments
+          Tournaments
         </h2>
         {loadingTournaments ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -99,7 +123,7 @@ export default function Index() {
         ) : tournaments.length === 0 ? (
           <div className="text-center py-16 rounded-xl border border-slate-700/30 bg-slate-800/30">
             <Trophy className="h-12 w-12 text-slate-600 mx-auto mb-3" />
-            <p className="text-slate-400 text-lg">No active tournaments yet.</p>
+            <p className="text-slate-400 text-lg">No tournaments yet.</p>
             {user && (
               <Link to="/create-tournament">
                 <Button className="mt-4 bg-emerald-500 hover:bg-emerald-600 text-white">
@@ -110,45 +134,44 @@ export default function Index() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {tournaments.map((t) => (
-              <Link
-                key={t.id}
-                to={user ? `/dashboard/${t.id}` : '/leaderboard'}
-                className="group rounded-xl border border-slate-700/50 bg-slate-800/50 hover:bg-slate-800 hover:border-emerald-500/30 transition-all p-5"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <h3 className="text-lg font-semibold text-white group-hover:text-emerald-400 transition-colors">
-                    {t.name}
-                  </h3>
-                  <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-                    t.status === 'active'
-                      ? 'bg-emerald-500/20 text-emerald-400'
-                      : 'bg-amber-500/20 text-amber-400'
-                  }`}>
-                    {t.status}
-                  </span>
-                </div>
-                <div className="flex items-center gap-4 text-sm text-slate-400">
-                  <span className="flex items-center gap-1">
-                    <Calendar className="h-3.5 w-3.5" /> {t.date}
-                  </span>
-                  {t.num_targets && (
-                    <span className="flex items-center gap-1">
-                      <Users className="h-3.5 w-3.5" /> {t.num_targets} targets
+            {tournaments.map((t) => {
+              const courses = parseCourses(t.courses);
+              return (
+                <Link
+                  key={t.id}
+                  to={user ? `/dashboard/${t.id}` : '/leaderboard'}
+                  className="group rounded-xl border border-slate-700/50 bg-slate-800/50 hover:bg-slate-800 hover:border-emerald-500/30 transition-all p-5"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <h3 className="text-lg font-semibold text-white group-hover:text-emerald-400 transition-colors">
+                      {t.name}
+                    </h3>
+                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${getStatusStyle(t.status)}`}>
+                      {t.status}
                     </span>
-                  )}
-                </div>
-                {t.divisions && (
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {t.divisions.split(',').map((d) => (
-                      <span key={d.trim()} className="text-xs px-2 py-0.5 rounded bg-slate-700/50 text-slate-400">
-                        {d.trim()}
-                      </span>
-                    ))}
                   </div>
-                )}
-              </Link>
-            ))}
+                  <div className="flex items-center gap-4 text-sm text-slate-400">
+                    <span className="flex items-center gap-1">
+                      <Calendar className="h-3.5 w-3.5" /> {t.date}
+                    </span>
+                    {courses.length > 0 && (
+                      <span className="flex items-center gap-1">
+                        <MapPin className="h-3.5 w-3.5" /> {courses.length} course{courses.length > 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+                  {t.divisions && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {t.divisions.split(',').map((d) => (
+                        <span key={d.trim()} className="text-xs px-2 py-0.5 rounded bg-slate-700/50 text-slate-400">
+                          {d.trim()}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </Link>
+              );
+            })}
           </div>
         )}
       </section>

@@ -26,3 +26,9 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 - Backend tables created: tournaments, tournament_archers, scores
 - Custom API router created: /api/v1/tournament/* for public and cross-user operations
 - Generated 4 images for the app
+- All frontend pages implemented and routing configured
+- Updated: Divisions field is now multi-pick with preset toggles + custom input
+- Updated: Status field removed, auto-inferred from tournament date (active/upcoming/completed)
+- Updated: Added courses system - configurable number of courses with targets per course
+- Updated: Leaderboard supports filtering by specific course after selecting tournament
+- Backend: Added courses column to tournaments, course_number to scores, updated service/router
