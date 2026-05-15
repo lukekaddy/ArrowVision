@@ -1,13 +1,25 @@
 import logging
 from datetime import date as date_type, datetime
 from typing import Optional, Dict, Any, List
-from sqlalchemy import select, func, case, desc
+from sqlalchemy import select, func, case, desc, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from models.tournaments import Tournaments
 from models.tournament_archers import Tournament_archers
 from models.scores import Scores
 
 logger = logging.getLogger(__name__)
+
+# Safe columns that are guaranteed to exist in the tournaments table.
+# We use raw SQL for tournament queries to avoid SQLAlchemy including
+# columns that may not exist in the actual database schema.
+_TOURNAMENT_SAFE_COLS = [
+    "id", "user_id", "name", "date", "num_targets",
+    "divisions", "status", "courses", "mulligans",
+    "created_at", "updated_at"
+]
+
+# Check if location column is available (set on first successful query)
+_location_available: Optional[bool] = None
 
 
 class TournamentOpsService:
@@ -16,20 +28,49 @@ class TournamentOpsService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def _check_location_column(self) -> bool:
+        """Check if the location column exists in the tournaments table"""
+        global _location_available
+        if _location_available is not None:
+            return _location_available
+        try:
+            check_query = text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'tournaments' AND column_name = 'location'"
+            )
+            result = await self.db.execute(check_query)
+            row = result.scalar_one_or_none()
+            _location_available = row is not None
+        except Exception:
+            _location_available = False
+        return _location_available
+
+    async def _get_tournament_columns(self) -> List[str]:
+        """Get the list of columns to select, including location if available"""
+        has_location = await self._check_location_column()
+        cols = list(_TOURNAMENT_SAFE_COLS)
+        if has_location:
+            cols.insert(4, "location")  # After "date"
+        return cols
+
     async def get_public_tournaments(self, skip: int = 0, limit: int = 50) -> Dict[str, Any]:
         """Get all tournaments (public) with computed status based on date"""
-        query = select(Tournaments).order_by(desc(Tournaments.created_at)).offset(skip).limit(limit)
-        result = await self.db.execute(query)
-        items = result.scalars().all()
+        cols = await self._get_tournament_columns()
+        col_str = ", ".join(cols)
+        query = text(
+            f"SELECT {col_str} FROM tournaments ORDER BY created_at DESC OFFSET :skip LIMIT :lim"
+        )
+        result = await self.db.execute(query, {"skip": skip, "lim": limit})
+        rows = result.mappings().all()
 
-        count_query = select(func.count()).select_from(Tournaments)
+        count_query = text("SELECT COUNT(*) FROM tournaments")
         count_result = await self.db.execute(count_query)
         total = count_result.scalar() or 0
 
         tournament_list = []
-        for t in items:
-            t_dict = self._tournament_to_dict(t)
-            t_dict["status"] = self._compute_status(t.date)
+        for row in rows:
+            t_dict = self._row_to_dict(dict(row))
+            t_dict["status"] = self._compute_status(t_dict.get("date"))
             tournament_list.append(t_dict)
 
         return {
@@ -39,12 +80,14 @@ class TournamentOpsService:
 
     async def get_tournament_public(self, tournament_id: int) -> Optional[Dict]:
         """Get public tournament details"""
-        query = select(Tournaments).where(Tournaments.id == tournament_id)
-        result = await self.db.execute(query)
-        tournament = result.scalar_one_or_none()
-        if not tournament:
+        cols = await self._get_tournament_columns()
+        col_str = ", ".join(cols)
+        query = text(f"SELECT {col_str} FROM tournaments WHERE id = :tid")
+        result = await self.db.execute(query, {"tid": tournament_id})
+        row = result.mappings().first()
+        if not row:
             return None
-        return self._tournament_to_dict(tournament)
+        return self._row_to_dict(dict(row))
 
     async def get_leaderboard(self, tournament_id: int, division: Optional[str] = None, course_number: Optional[int] = None) -> List[Dict]:
         """Get leaderboard for a tournament"""
@@ -205,13 +248,33 @@ class TournamentOpsService:
         except (ValueError, TypeError):
             return "unknown"
 
+    def _row_to_dict(self, row: Dict) -> Dict:
+        """Convert a raw SQL row dict to a tournament response dict"""
+        created_at = row.get("created_at")
+        updated_at = row.get("updated_at")
+        return {
+            "id": row.get("id"),
+            "user_id": row.get("user_id"),
+            "name": row.get("name"),
+            "date": row.get("date"),
+            "location": row.get("location", ""),
+            "num_targets": row.get("num_targets"),
+            "divisions": row.get("divisions"),
+            "courses": row.get("courses"),
+            "mulligans": row.get("mulligans"),
+            "status": row.get("status"),
+            "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else str(created_at) if created_at else None,
+            "updated_at": updated_at.isoformat() if hasattr(updated_at, "isoformat") else str(updated_at) if updated_at else None,
+        }
+
     def _tournament_to_dict(self, t: Tournaments) -> Dict:
+        """Convert an ORM Tournament object to dict (used by non-raw queries)"""
         return {
             "id": t.id,
             "user_id": t.user_id,
             "name": t.name,
             "date": t.date,
-            "location": t.location,
+            "location": getattr(t, "location", None) or "",
             "num_targets": t.num_targets,
             "divisions": t.divisions,
             "courses": t.courses,
