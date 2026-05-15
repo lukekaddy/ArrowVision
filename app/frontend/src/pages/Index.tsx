@@ -75,7 +75,7 @@ export default function Index() {
         </div>
         <div className="relative max-w-7xl mx-auto px-4 py-20 md:py-32 text-center">
           <h1 className="text-4xl md:text-6xl font-extrabold text-white mb-4 tracking-tight">
-            Arrow<span className="text-emerald-400">Live</span>
+            BullsEye<span className="text-emerald-400"> Labs</span>
           </h1>
           <p className="text-lg md:text-xl text-slate-300 mb-8 max-w-2xl mx-auto">
             Digital archery tournament scoring. Replace paper scorecards with live scoring, real-time leaderboards, and instant results.

@@ -26,9 +26,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-50 border-b border-slate-700/50 backdrop-blur-md" style={{ backgroundColor: 'rgba(15, 23, 42, 0.95)' }}>
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
-            <img src={LOGO_URL} alt="ArrowLive" className="h-9 w-9 rounded-lg" />
+            <img src={LOGO_URL} alt="BullsEye Labs" className="h-9 w-9 rounded-lg" />
             <span className="text-xl font-bold text-white">
-              Arrow<span className="text-emerald-400">Live</span>
+              BullsEye<span className="text-emerald-400"> Labs</span>
             </span>
           </Link>
 
@@ -121,7 +121,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {/* Footer */}
       <footer className="border-t border-slate-700/50 py-6 px-4">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3 text-sm text-slate-500">
-          <span>© 2026 ArrowLive. Digital archery scoring.</span>
+          <span>© 2026 BullsEye Labs. Digital archery scoring.</span>
           <div className="flex gap-4">
             <Link to="/leaderboard" className="hover:text-slate-300 transition-colors">Leaderboard</Link>
             <Link to="/results" className="hover:text-slate-300 transition-colors">Results</Link>
