@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ClipboardList, Crosshair, Target, ChevronRight } from 'lucide-react';
+import { ClipboardList, Crosshair, Target, ChevronRight, CheckCircle } from 'lucide-react';
 
 interface CourseConfig {
   course: number;
@@ -38,6 +38,47 @@ export default function Scorecard() {
   const [archers, setArchers] = useState<Archer[]>([]);
   const [selectedArcher, setSelectedArcher] = useState<Archer | null>(null);
   const [showTargets, setShowTargets] = useState(false);
+  const [scores, setScores] = useState<Record<number, number>>({});
+
+  const getStorageKey = useCallback(() => {
+    if (!selectedTournament || !selectedArcher) return null;
+    const courseNum = selectedCourse?.course || 1;
+    return `scores_${selectedTournament.id}_${selectedArcher.id}_${courseNum}`;
+  }, [selectedTournament, selectedArcher, selectedCourse]);
+
+  const loadScores = useCallback(() => {
+    const key = getStorageKey();
+    if (!key) {
+      setScores({});
+      return;
+    }
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        setScores(JSON.parse(stored));
+      } else {
+        setScores({});
+      }
+    } catch {
+      setScores({});
+    }
+  }, [getStorageKey]);
+
+  // Load scores when filters change
+  useEffect(() => {
+    loadScores();
+  }, [loadScores]);
+
+  // Reload scores when window regains focus (returning from SmartScore)
+  useEffect(() => {
+    const handleFocus = () => {
+      loadScores();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [loadScores]);
+
+  const totalScore = Object.values(scores).reduce((sum, val) => sum + val, 0);
 
   useEffect(() => {
     const fetchTournaments = async () => {
@@ -165,17 +206,18 @@ export default function Scorecard() {
               </Select>
             </div>
 
-            {/* Tap to View Score Card */}
+            {/* Tap to View Score Details */}
             {filtersComplete && !showTargets && (
               <button
                 onClick={() => setShowTargets(true)}
                 className="w-full bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-2 border-emerald-500/50 rounded-2xl p-8 text-center transition-all hover:border-emerald-400 hover:from-emerald-500/30 hover:to-emerald-600/20 active:scale-[0.98] group"
               >
                 <Target className="h-14 w-14 text-emerald-400 mx-auto mb-4 group-hover:scale-110 transition-transform" />
-                <p className="text-2xl font-bold text-white mb-2">Tap to View Score Card</p>
-                <p className="text-slate-400 text-sm">
+                <p className="text-2xl font-bold text-white mb-2">Tap to View Score Details</p>
+                <p className="text-slate-400 text-sm mb-3">
                   {selectedArcher?.archer_name} · {selectedCourse?.name || `Course ${selectedCourse?.course || 1}`} · {maxTargets} targets
                 </p>
+                <p className="text-emerald-400 font-bold text-lg">Total Score: {totalScore}</p>
               </button>
             )}
 
@@ -188,28 +230,44 @@ export default function Scorecard() {
                   <p className="text-emerald-400 text-sm">
                     {selectedCourse?.name || `Course ${selectedCourse?.course || 1}`} · {maxTargets} targets
                   </p>
+                  <p className="text-amber-400 font-bold text-lg mt-2">Total Score: {totalScore}</p>
                 </div>
 
                 {/* Target List */}
                 <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
-                  {Array.from({ length: maxTargets }, (_, i) => i + 1).map((targetNum) => (
-                    <button
-                      key={targetNum}
-                      onClick={() => handleTargetTap(targetNum)}
-                      className="w-full flex items-center justify-between bg-slate-800/70 hover:bg-slate-700/80 border border-slate-700/50 hover:border-emerald-500/40 rounded-xl px-5 py-4 transition-all active:scale-[0.98] group"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-slate-700/80 group-hover:bg-emerald-500/20 flex items-center justify-center transition-colors">
-                          <Crosshair className="h-5 w-5 text-slate-400 group-hover:text-emerald-400 transition-colors" />
+                  {Array.from({ length: maxTargets }, (_, i) => i + 1).map((targetNum) => {
+                    const targetScore = scores[targetNum];
+                    const isScored = targetScore !== undefined;
+                    return (
+                      <button
+                        key={targetNum}
+                        onClick={() => handleTargetTap(targetNum)}
+                        className="w-full flex items-center justify-between bg-slate-800/70 hover:bg-slate-700/80 border border-slate-700/50 hover:border-emerald-500/40 rounded-xl px-5 py-4 transition-all active:scale-[0.98] group"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isScored ? 'bg-emerald-500/20' : 'bg-slate-700/80 group-hover:bg-emerald-500/20'}`}>
+                            {isScored ? (
+                              <CheckCircle className="h-6 w-6 text-emerald-400" />
+                            ) : (
+                              <Crosshair className="h-5 w-5 text-slate-400 group-hover:text-emerald-400 transition-colors" />
+                            )}
+                          </div>
+                          <div className="text-left">
+                            <p className="text-white font-semibold text-lg">
+                              Target {targetNum}
+                              {isScored && (
+                                <span className="text-emerald-400 ml-2">— {targetScore === 0 ? 'Miss' : targetScore}</span>
+                              )}
+                            </p>
+                            <p className="text-slate-500 text-xs">
+                              {isScored ? 'Tap to re-score' : 'Tap to score'}
+                            </p>
+                          </div>
                         </div>
-                        <div className="text-left">
-                          <p className="text-white font-semibold text-lg">Target {targetNum}</p>
-                          <p className="text-slate-500 text-xs">Tap to score</p>
-                        </div>
-                      </div>
-                      <ChevronRight className="h-5 w-5 text-slate-600 group-hover:text-emerald-400 transition-colors" />
-                    </button>
-                  ))}
+                        <ChevronRight className="h-5 w-5 text-slate-600 group-hover:text-emerald-400 transition-colors" />
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {/* Back button */}

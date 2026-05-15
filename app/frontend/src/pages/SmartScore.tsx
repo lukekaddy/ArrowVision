@@ -3,9 +3,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
-import { Crosshair, CheckCircle, ArrowLeft, Play, Pause, Edit3, Lock } from 'lucide-react';
+import { Crosshair, CheckCircle, ArrowLeft, Play, Edit3, Lock } from 'lucide-react';
 
-const ARROW_VIDEO_URL = 'https://mgx-backend-cdn.metadl.com/generate/videos/1230028/2026-05-14/oru6djqaafsq/arrow-hitting-target.mp4';
+const ARROW_VIDEO_URL = 'https://mgx-backend-cdn.metadl.com/generate/videos/1230028/2026-05-14/or3jxaaaafsq/fixed-camera-arrow-hit.mp4';
 
 export default function SmartScore() {
   const navigate = useNavigate();
@@ -47,6 +47,22 @@ export default function SmartScore() {
     setIsPlaying(true);
   };
 
+  const saveScoreToLocalStorage = (scoreValue: number) => {
+    if (!tournamentId || !archerId || !courseNumber || !targetNumber) return;
+    const key = `scores_${tournamentId}_${archerId}_${courseNumber}`;
+    let existing: Record<string, number> = {};
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        existing = JSON.parse(stored);
+      }
+    } catch {
+      existing = {};
+    }
+    existing[targetNumber] = scoreValue;
+    localStorage.setItem(key, JSON.stringify(existing));
+  };
+
   const submitScore = async (scoreValue: number) => {
     if (!tournamentId || !archerId || !targetNumber) return;
     setSubmitting(true);
@@ -65,6 +81,7 @@ export default function SmartScore() {
         method: 'POST',
         data: payload,
       });
+      saveScoreToLocalStorage(scoreValue);
       setSubmittedScore(scoreValue);
       setSubmitted(true);
     } catch (err) {
