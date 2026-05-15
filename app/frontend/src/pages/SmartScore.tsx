@@ -3,12 +3,15 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
-import { Camera, Crosshair, CheckCircle, ArrowLeft } from 'lucide-react';
+import { Crosshair, CheckCircle, ArrowLeft, Play, Pause, Edit3, Lock } from 'lucide-react';
+
+const ARROW_VIDEO_URL = 'https://mgx-backend-cdn.metadl.com/generate/videos/1230028/2026-05-14/oru6djqaafsq/arrow-hitting-target.mp4';
 
 export default function SmartScore() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const client = getClient();
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const tournamentId = searchParams.get('tournamentId');
   const courseNumber = searchParams.get('courseNumber');
@@ -17,30 +20,31 @@ export default function SmartScore() {
   const targetNumber = searchParams.get('targetNumber');
   const maxTargets = searchParams.get('maxTargets');
 
-  const [beforeImage, setBeforeImage] = useState<string | null>(null);
-  const [afterImage, setAfterImage] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [submittedScore, setSubmittedScore] = useState<number | null>(null);
-  const beforeRef = useRef<HTMLInputElement>(null);
-  const afterRef = useRef<HTMLInputElement>(null);
+  const [showOverride, setShowOverride] = useState(false);
+  const [lockedScore] = useState(10);
 
   const hasContext = tournamentId && archerId && targetNumber;
 
-  const handleCapture = (type: 'before' | 'after') => {
-    if (type === 'before') beforeRef.current?.click();
-    else afterRef.current?.click();
+  const toggleVideo = () => {
+    if (!videoRef.current) return;
+    if (isPlaying) {
+      videoRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      videoRef.current.play();
+      setIsPlaying(true);
+    }
   };
 
-  const handleFile = (type: 'before' | 'after', e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (type === 'before') setBeforeImage(reader.result as string);
-      else setAfterImage(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+  const replayVideo = () => {
+    if (!videoRef.current) return;
+    videoRef.current.currentTime = 0;
+    videoRef.current.play();
+    setIsPlaying(true);
   };
 
   const submitScore = async (scoreValue: number) => {
@@ -105,7 +109,7 @@ export default function SmartScore() {
     );
   }
 
-  const SCORE_BUTTONS = [
+  const OVERRIDE_SCORES = [
     { value: 10, label: '10', color: 'bg-amber-500 hover:bg-amber-600' },
     { value: 8, label: '8', color: 'bg-red-500 hover:bg-red-600' },
     { value: 5, label: '5', color: 'bg-blue-500 hover:bg-blue-600' },
@@ -135,66 +139,101 @@ export default function SmartScore() {
           <p className="text-white font-semibold mt-3">{archerName}</p>
         </div>
 
-        {/* Camera Capture */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          <div>
-            <input ref={beforeRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handleFile('before', e)} />
-            <Button
-              onClick={() => handleCapture('before')}
-              className="w-full h-14 bg-slate-700 hover:bg-slate-600 text-white gap-2"
-            >
-              <Camera className="h-5 w-5" /> Before
-            </Button>
-          </div>
-          <div>
-            <input ref={afterRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handleFile('after', e)} />
-            <Button
-              onClick={() => handleCapture('after')}
-              className="w-full h-14 bg-slate-700 hover:bg-slate-600 text-white gap-2"
-            >
-              <Camera className="h-5 w-5" /> After
-            </Button>
-          </div>
-        </div>
-
-        {/* Image Display */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          <div className="aspect-square rounded-xl border border-slate-700/50 bg-slate-800/50 overflow-hidden flex items-center justify-center">
-            {beforeImage ? (
-              <img src={beforeImage} alt="Before" className="w-full h-full object-cover" />
-            ) : (
-              <div className="text-center text-slate-500">
-                <Camera className="h-8 w-8 mx-auto mb-2" />
-                <p className="text-sm">Before</p>
-              </div>
-            )}
-          </div>
-          <div className="aspect-square rounded-xl border border-slate-700/50 bg-slate-800/50 overflow-hidden flex items-center justify-center">
-            {afterImage ? (
-              <img src={afterImage} alt="After" className="w-full h-full object-cover" />
-            ) : (
-              <div className="text-center text-slate-500">
-                <Camera className="h-8 w-8 mx-auto mb-2" />
-                <p className="text-sm">After</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Score Buttons */}
-        <p className="text-slate-400 text-sm mb-3 text-center">Record Score</p>
-        <div className="grid grid-cols-2 gap-4">
-          {SCORE_BUTTONS.map((btn) => (
+        {/* Video Replay Section */}
+        <div className="mb-6">
+          <p className="text-slate-400 text-sm mb-3 text-center font-medium uppercase tracking-wider">Arrow Replay</p>
+          <div className="relative rounded-2xl overflow-hidden border-2 border-slate-700/50 bg-black">
+            <video
+              ref={videoRef}
+              src={ARROW_VIDEO_URL}
+              className="w-full aspect-video object-cover"
+              playsInline
+              onEnded={() => setIsPlaying(false)}
+              poster="/placeholder-target.jpg"
+            />
+            {/* Play/Pause Overlay */}
             <button
-              key={btn.value}
-              onClick={() => submitScore(btn.value)}
-              disabled={submitting}
-              className={`${btn.color} text-white rounded-2xl h-24 text-3xl font-bold transition-all active:scale-95 disabled:opacity-50`}
+              onClick={toggleVideo}
+              className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/20 transition-colors"
             >
-              {btn.label}
+              {!isPlaying && (
+                <div className="w-16 h-16 rounded-full bg-emerald-500/90 flex items-center justify-center shadow-lg shadow-emerald-500/30">
+                  <Play className="h-7 w-7 text-white ml-1" />
+                </div>
+              )}
             </button>
-          ))}
+          </div>
+          {/* Replay Button */}
+          <Button
+            onClick={replayVideo}
+            variant="ghost"
+            className="w-full mt-2 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 gap-2"
+          >
+            <Play className="h-4 w-4" /> Replay Clip
+          </Button>
         </div>
+
+        {/* Locked Score Display */}
+        <div className="bg-gradient-to-br from-emerald-500/15 to-emerald-600/5 border-2 border-emerald-500/40 rounded-2xl p-6 mb-4 text-center">
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <Lock className="h-4 w-4 text-emerald-400" />
+            <p className="text-emerald-400 text-sm font-medium uppercase tracking-wider">Detected Score</p>
+          </div>
+          <p className="text-6xl font-bold text-white mb-1">{lockedScore}</p>
+          <p className="text-slate-400 text-sm">Bullseye hit confirmed</p>
+        </div>
+
+        {/* Submit Locked Score */}
+        {!showOverride && (
+          <div className="space-y-3">
+            <Button
+              onClick={() => submitScore(lockedScore)}
+              disabled={submitting}
+              className="w-full h-16 bg-emerald-500 hover:bg-emerald-600 text-white text-xl font-bold rounded-2xl gap-2 shadow-lg shadow-emerald-500/20"
+            >
+              {submitting ? 'Submitting...' : `Submit Score: ${lockedScore}`}
+            </Button>
+
+            <Button
+              onClick={() => setShowOverride(true)}
+              variant="ghost"
+              className="w-full text-slate-400 hover:text-amber-400 hover:bg-amber-500/10 gap-2"
+            >
+              <Edit3 className="h-4 w-4" /> Manually Override Score
+            </Button>
+          </div>
+        )}
+
+        {/* Manual Override */}
+        {showOverride && (
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-amber-400 text-sm font-medium uppercase tracking-wider flex items-center gap-2">
+                <Edit3 className="h-4 w-4" /> Manual Override
+              </p>
+              <Button
+                onClick={() => setShowOverride(false)}
+                variant="ghost"
+                size="sm"
+                className="text-slate-500 hover:text-white text-xs"
+              >
+                Cancel
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {OVERRIDE_SCORES.map((btn) => (
+                <button
+                  key={btn.value}
+                  onClick={() => submitScore(btn.value)}
+                  disabled={submitting}
+                  className={`${btn.color} text-white rounded-2xl h-20 text-2xl font-bold transition-all active:scale-95 disabled:opacity-50`}
+                >
+                  {btn.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </Layout>
   );

@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ClipboardList, ChevronLeft, ChevronRight, Crosshair } from 'lucide-react';
+import { ClipboardList, Crosshair, Target, ChevronRight } from 'lucide-react';
 
 interface CourseConfig {
   course: number;
@@ -36,8 +36,8 @@ export default function Scorecard() {
   const [coursesConfig, setCoursesConfig] = useState<CourseConfig[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<CourseConfig | null>(null);
   const [archers, setArchers] = useState<Archer[]>([]);
-  const [currentTarget, setCurrentTarget] = useState(1);
   const [selectedArcher, setSelectedArcher] = useState<Archer | null>(null);
+  const [showTargets, setShowTargets] = useState(false);
 
   useEffect(() => {
     const fetchTournaments = async () => {
@@ -55,9 +55,9 @@ export default function Scorecard() {
     const t = tournaments.find((t) => t.id === parseInt(id));
     if (!t) return;
     setSelectedTournament(t);
-    setCurrentTarget(1);
     setSelectedArcher(null);
     setSelectedCourse(null);
+    setShowTargets(false);
 
     let parsed: CourseConfig[] = [];
     if (t.courses) {
@@ -79,19 +79,20 @@ export default function Scorecard() {
   const selectCourse = (courseNum: string) => {
     const c = coursesConfig.find((c) => c.course === parseInt(courseNum));
     setSelectedCourse(c || null);
-    setCurrentTarget(1);
+    setShowTargets(false);
   };
 
   const maxTargets = selectedCourse?.targets || selectedTournament?.num_targets || 10;
+  const filtersComplete = selectedTournament && selectedArcher && (coursesConfig.length <= 1 || selectedCourse);
 
-  const handleTargetTap = () => {
+  const handleTargetTap = (targetNum: number) => {
     if (!selectedTournament || !selectedArcher) return;
     const params = new URLSearchParams({
       tournamentId: selectedTournament.id.toString(),
       courseNumber: (selectedCourse?.course || 1).toString(),
       archerId: selectedArcher.id.toString(),
       archerName: selectedArcher.archer_name,
-      targetNumber: currentTarget.toString(),
+      targetNumber: targetNum.toString(),
       maxTargets: maxTargets.toString(),
     });
     navigate(`/smart-score?${params.toString()}`);
@@ -152,7 +153,7 @@ export default function Scorecard() {
 
             {/* Archer Select */}
             <div className="mb-6">
-              <Select onValueChange={(v) => { setSelectedArcher(archers.find((a) => a.id === parseInt(v)) || null); }}>
+              <Select onValueChange={(v) => { setSelectedArcher(archers.find((a) => a.id === parseInt(v)) || null); setShowTargets(false); }}>
                 <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-12">
                   <SelectValue placeholder="Select Archer" />
                 </SelectTrigger>
@@ -164,50 +165,62 @@ export default function Scorecard() {
               </Select>
             </div>
 
-            {selectedArcher && (coursesConfig.length <= 1 || selectedCourse) && (
-              <>
-                {/* Target Navigation */}
-                <div className="flex items-center justify-between mb-6 bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
-                  <Button
-                    variant="ghost"
-                    onClick={() => setCurrentTarget(Math.max(1, currentTarget - 1))}
-                    disabled={currentTarget <= 1}
-                    className="text-slate-300 hover:text-white"
-                  >
-                    <ChevronLeft className="h-6 w-6" />
-                  </Button>
+            {/* Tap to View Score Card */}
+            {filtersComplete && !showTargets && (
+              <button
+                onClick={() => setShowTargets(true)}
+                className="w-full bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-2 border-emerald-500/50 rounded-2xl p-8 text-center transition-all hover:border-emerald-400 hover:from-emerald-500/30 hover:to-emerald-600/20 active:scale-[0.98] group"
+              >
+                <Target className="h-14 w-14 text-emerald-400 mx-auto mb-4 group-hover:scale-110 transition-transform" />
+                <p className="text-2xl font-bold text-white mb-2">Tap to View Score Card</p>
+                <p className="text-slate-400 text-sm">
+                  {selectedArcher?.archer_name} · {selectedCourse?.name || `Course ${selectedCourse?.course || 1}`} · {maxTargets} targets
+                </p>
+              </button>
+            )}
 
-                  {/* Clickable Target Number */}
-                  <button
-                    onClick={handleTargetTap}
-                    className="text-center group cursor-pointer rounded-xl px-6 py-3 transition-all hover:bg-emerald-500/10 border-2 border-transparent hover:border-emerald-500/50 active:scale-95"
-                  >
-                    {selectedCourse && <p className="text-emerald-400 text-xs font-medium">{selectedCourse.name || `Course ${selectedCourse.course}`}</p>}
-                    <p className="text-slate-400 text-sm">Target</p>
-                    <p className="text-3xl font-bold text-white group-hover:text-emerald-400 transition-colors">{currentTarget}</p>
-                    <p className="text-slate-500 text-xs">of {maxTargets}</p>
-                    <div className="flex items-center justify-center gap-1 mt-2">
-                      <Crosshair className="h-3.5 w-3.5 text-emerald-400" />
-                      <p className="text-emerald-400 text-xs font-medium">Tap to Score →</p>
-                    </div>
-                  </button>
-
-                  <Button
-                    variant="ghost"
-                    onClick={() => setCurrentTarget(Math.min(maxTargets, currentTarget + 1))}
-                    disabled={currentTarget >= maxTargets}
-                    className="text-slate-300 hover:text-white"
-                  >
-                    <ChevronRight className="h-6 w-6" />
-                  </Button>
+            {/* Scrollable Target List */}
+            {filtersComplete && showTargets && (
+              <div>
+                {/* Archer & Course Info Header */}
+                <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50 mb-4 text-center">
+                  <p className="text-white font-semibold text-lg">{selectedArcher?.archer_name}</p>
+                  <p className="text-emerald-400 text-sm">
+                    {selectedCourse?.name || `Course ${selectedCourse?.course || 1}`} · {maxTargets} targets
+                  </p>
                 </div>
 
-                {/* Archer Info */}
-                <div className="text-center mb-6">
-                  <p className="text-lg text-white font-semibold">{selectedArcher.archer_name}</p>
-                  <p className="text-slate-400 text-sm mt-1">Select a target above and tap to record your score</p>
+                {/* Target List */}
+                <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                  {Array.from({ length: maxTargets }, (_, i) => i + 1).map((targetNum) => (
+                    <button
+                      key={targetNum}
+                      onClick={() => handleTargetTap(targetNum)}
+                      className="w-full flex items-center justify-between bg-slate-800/70 hover:bg-slate-700/80 border border-slate-700/50 hover:border-emerald-500/40 rounded-xl px-5 py-4 transition-all active:scale-[0.98] group"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-full bg-slate-700/80 group-hover:bg-emerald-500/20 flex items-center justify-center transition-colors">
+                          <Crosshair className="h-5 w-5 text-slate-400 group-hover:text-emerald-400 transition-colors" />
+                        </div>
+                        <div className="text-left">
+                          <p className="text-white font-semibold text-lg">Target {targetNum}</p>
+                          <p className="text-slate-500 text-xs">Tap to score</p>
+                        </div>
+                      </div>
+                      <ChevronRight className="h-5 w-5 text-slate-600 group-hover:text-emerald-400 transition-colors" />
+                    </button>
+                  ))}
                 </div>
-              </>
+
+                {/* Back button */}
+                <Button
+                  onClick={() => setShowTargets(false)}
+                  variant="ghost"
+                  className="w-full mt-4 text-slate-400 hover:text-white"
+                >
+                  ← Back to filters
+                </Button>
+              </div>
             )}
           </>
         )}

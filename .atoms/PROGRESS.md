@@ -26,6 +26,9 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 - [x] Update Scorecard: remove score buttons, make target number clickable to navigate to Smart Score
 - [x] Rewrite Smart Score page with target context, camera capture, and score submission
 - [x] Add tournament location field to Create Tournament, Index, and Dashboard
+- [x] Redesign Scorecard: after filter show "Tap to View Score Card", then scrollable target list
+- [x] Redesign SmartScore: remove before/after photos, add video replay, lock score at 10 with manual override
+- [x] Generate arrow-hitting-target video clip
 
 ## Progress Log
 - Backend tables created: tournaments, tournament_archers, scores
