@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
-import { Crosshair, CheckCircle, ArrowLeft, Play, Edit3, Lock } from 'lucide-react';
+import { Crosshair, ArrowLeft, Play, Edit3, Lock } from 'lucide-react';
 
 const ARROW_VIDEO_URL = 'https://mgx-backend-cdn.metadl.com/generate/videos/1230028/2026-05-14/or3jxaaaafsq/fixed-camera-arrow-hit.mp4';
 
@@ -22,8 +22,6 @@ export default function SmartScore() {
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [submittedScore, setSubmittedScore] = useState<number | null>(null);
   const [showOverride, setShowOverride] = useState(false);
   const [lockedScore] = useState(10);
 
@@ -82,11 +80,9 @@ export default function SmartScore() {
         data: payload,
       });
       saveScoreToLocalStorage(scoreValue);
-      setSubmittedScore(scoreValue);
-      setSubmitted(true);
+      navigate('/scorecard');
     } catch (err) {
       console.error('Error submitting score:', err);
-    } finally {
       setSubmitting(false);
     }
   };
@@ -106,25 +102,7 @@ export default function SmartScore() {
     );
   }
 
-  if (submitted) {
-    return (
-      <Layout>
-        <div className="max-w-md mx-auto px-4 py-20 text-center">
-          <CheckCircle className="h-16 w-16 text-emerald-400 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-white mb-2">Score Recorded!</h2>
-          <p className="text-slate-400 mb-2">
-            {archerName} · Target {targetNumber} of {maxTargets}
-          </p>
-          <p className="text-3xl font-bold text-emerald-400 mb-6">
-            {submittedScore === 0 ? 'Miss' : submittedScore}
-          </p>
-          <Button onClick={() => navigate('/scorecard')} className="bg-emerald-500 hover:bg-emerald-600 text-white h-14 text-lg gap-2">
-            <ArrowLeft className="h-5 w-5" /> Back to Scorecard
-          </Button>
-        </div>
-      </Layout>
-    );
-  }
+
 
   const OVERRIDE_SCORES = [
     { value: 10, label: '10', color: 'bg-amber-500 hover:bg-amber-600' },
