@@ -23,6 +23,8 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 - [x] Configure routing in App.tsx
 - [x] Add mulligan support to Create Tournament page
 - [x] Update archer registration with first/last name, phone, division dropdown, purchased mulligans
+- [x] Update Scorecard: remove score buttons, make target number clickable to navigate to Smart Score
+- [x] Rewrite Smart Score page with target context, camera capture, and score submission
 
 ## Progress Log
 - Backend tables created: tournaments, tournament_archers, scores
@@ -41,3 +43,5 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 - Updated: Archer registration in TournamentDashboard - first/last name, phone, division dropdown from tournament config, purchased mulligans toggle with type/count inputs
 - Backend: Added mulligans column to tournaments, first_name/last_name/phone/purchased_mulligans to tournament_archers
 - Backend: Updated register-archer endpoint and service to handle new fields
+- Updated: Scorecard no longer has score buttons — target number is now clickable, navigates to Smart Score with full context
+- Updated: Smart Score page fully rewritten — reads target/archer/course from URL params, before/after camera capture, score submission via API, confirmation with back navigation
