@@ -36,11 +36,11 @@
         },
         "courses": {
             "type": "string",
-            "description": "JSON courses config"
+            "description": "JSON string of courses config"
         },
         "mulligans": {
             "type": "string",
-            "description": "JSON mulligans config"
+            "description": "JSON string of mulligans config"
         }
     },
     "required": [
