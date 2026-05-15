@@ -33,6 +33,7 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 - [x] Track scores in localStorage and show scored targets with green checkmarks
 - [x] Save scores from SmartScore to localStorage for Scorecard persistence
 - [x] Generate realistic fixed-camera arrow hit video
+- [x] Fix post-score navigation: SmartScore passes context params back to Scorecard so it auto-shows target list
 
 ## Progress Log
 - Backend tables created: tournaments, tournament_archers, scores

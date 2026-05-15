@@ -61,6 +61,15 @@ export default function SmartScore() {
     localStorage.setItem(key, JSON.stringify(existing));
   };
 
+  const navigateBackToScorecard = () => {
+    const params = new URLSearchParams();
+    if (tournamentId) params.set('tournamentId', tournamentId);
+    if (archerId) params.set('archerId', archerId);
+    if (courseNumber) params.set('courseNumber', courseNumber);
+    params.set('showTargets', 'true');
+    navigate(`/scorecard?${params.toString()}`);
+  };
+
   const submitScore = async (scoreValue: number) => {
     if (!tournamentId || !archerId || !targetNumber) return;
     setSubmitting(true);
@@ -80,7 +89,7 @@ export default function SmartScore() {
         data: payload,
       });
       saveScoreToLocalStorage(scoreValue);
-      navigate('/scorecard');
+      navigateBackToScorecard();
     } catch (err) {
       console.error('Error submitting score:', err);
       setSubmitting(false);
@@ -116,7 +125,7 @@ export default function SmartScore() {
       <div className="max-w-lg mx-auto px-4 py-8">
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
-          <Button variant="ghost" onClick={() => navigate('/scorecard')} className="text-slate-300 hover:text-white p-2">
+          <Button variant="ghost" onClick={navigateBackToScorecard} className="text-slate-300 hover:text-white p-2">
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>

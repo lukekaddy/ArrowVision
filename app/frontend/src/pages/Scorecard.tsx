@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
@@ -31,6 +31,7 @@ export default function Scorecard() {
   const { user, login } = useAuth();
   const client = getClient();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
   const [coursesConfig, setCoursesConfig] = useState<CourseConfig[]>([]);
@@ -39,6 +40,7 @@ export default function Scorecard() {
   const [selectedArcher, setSelectedArcher] = useState<Archer | null>(null);
   const [showTargets, setShowTargets] = useState(false);
   const [scores, setScores] = useState<Record<number, number>>({});
+  const restoredFromParams = useRef(false);
 
   const getStorageKey = useCallback(() => {
     if (!selectedTournament || !selectedArcher) return null;
@@ -84,7 +86,51 @@ export default function Scorecard() {
     const fetchTournaments = async () => {
       try {
         const res = await client.apiCall.invoke({ url: '/api/v1/tournament/public-list', method: 'GET', data: {} });
-        setTournaments(res?.data?.items || []);
+        const items = res?.data?.items || [];
+        setTournaments(items);
+
+        // Restore state from URL params (when returning from SmartScore)
+        const paramTournamentId = searchParams.get('tournamentId');
+        const paramArcherId = searchParams.get('archerId');
+        const paramCourseNumber = searchParams.get('courseNumber');
+        const paramShowTargets = searchParams.get('showTargets');
+
+        if (paramTournamentId && paramArcherId && paramShowTargets === 'true' && !restoredFromParams.current) {
+          restoredFromParams.current = true;
+          const t = items.find((tour: Tournament) => tour.id === parseInt(paramTournamentId));
+          if (t) {
+            setSelectedTournament(t);
+
+            let parsed: CourseConfig[] = [];
+            if (t.courses) {
+              try { parsed = JSON.parse(t.courses); } catch { parsed = []; }
+            }
+            setCoursesConfig(parsed);
+
+            if (paramCourseNumber) {
+              const c = parsed.find((c: CourseConfig) => c.course === parseInt(paramCourseNumber));
+              setSelectedCourse(c || (parsed.length === 1 ? parsed[0] : null));
+            } else if (parsed.length === 1) {
+              setSelectedCourse(parsed[0]);
+            }
+
+            // Fetch archers for this tournament and restore selection
+            try {
+              const archerRes = await client.apiCall.invoke({ url: `/api/v1/tournament/archers/${paramTournamentId}`, method: 'GET', data: {} });
+              const archerList = archerRes?.data || [];
+              setArchers(archerList);
+              const a = archerList.find((ar: Archer) => ar.id === parseInt(paramArcherId));
+              if (a) {
+                setSelectedArcher(a);
+                setShowTargets(true);
+              }
+            } catch {
+              setArchers([]);
+            }
+          }
+          // Clear the search params from URL to avoid stale state on refresh
+          setSearchParams({}, { replace: true });
+        }
       } catch {
         setTournaments([]);
       }
