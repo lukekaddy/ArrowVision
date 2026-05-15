@@ -6,7 +6,7 @@ import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Trophy, UserPlus, Play, Square, Download, Edit2, Check } from 'lucide-react';
+import { Trophy, UserPlus, Play, Square, Download, Edit2, Check, MapPin } from 'lucide-react';
 
 interface Archer {
   id: number;
@@ -44,6 +44,7 @@ interface TournamentInfo {
   id: number;
   name: string;
   date: string;
+  location?: string;
   num_targets: number;
   divisions: string;
   status: string;
@@ -235,6 +236,12 @@ export default function TournamentDashboard() {
                     {tournament.status}
                   </span>
                 </p>
+                {tournament.location && (
+                  <p className="text-slate-400 mt-1 flex items-center gap-1.5">
+                    <MapPin className="h-4 w-4 text-emerald-400/70" />
+                    {tournament.location}
+                  </p>
+                )}
               </div>
               <div className="flex gap-2 flex-wrap">
                 {tournament.status !== 'active' && (

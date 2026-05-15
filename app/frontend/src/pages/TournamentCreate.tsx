@@ -6,7 +6,7 @@ import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Trophy, Plus, X, Check } from 'lucide-react';
+import { Trophy, Plus, X, Check, MapPin } from 'lucide-react';
 
 const DIVISION_OPTIONS = [
   'Recurve',
@@ -44,6 +44,7 @@ export default function TournamentCreate() {
   const client = getClient();
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
+  const [location, setLocation] = useState('');
   const [date, setDate] = useState('');
   const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
   const [customDivision, setCustomDivision] = useState('');
@@ -152,6 +153,7 @@ export default function TournamentCreate() {
         data: {
           name,
           date,
+          location: location || undefined,
           num_targets: totalTargets,
           divisions: selectedDivisions.join(','),
           courses: JSON.stringify(courses),
@@ -189,6 +191,20 @@ export default function TournamentCreate() {
               placeholder="e.g. Spring Championship 2026"
               className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
               required
+            />
+          </div>
+
+          {/* Location */}
+          <div>
+            <Label className="text-slate-300 mb-1.5 block flex items-center gap-1.5">
+              <MapPin className="h-4 w-4 text-emerald-400" />
+              Location
+            </Label>
+            <Input
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="e.g. Pine Valley Archery Range, Oregon"
+              className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
             />
           </div>
 

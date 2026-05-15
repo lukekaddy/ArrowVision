@@ -18,6 +18,10 @@
             "type": "string",
             "description": "Tournament date"
         },
+        "location": {
+            "type": "string",
+            "description": "Tournament location"
+        },
         "num_targets": {
             "type": "integer",
             "description": "Number of targets"
@@ -32,11 +36,11 @@
         },
         "courses": {
             "type": "string",
-            "description": "JSON string of course configurations"
+            "description": "JSON courses config"
         },
         "mulligans": {
             "type": "string",
-            "description": "JSON string of mulligan configurations"
+            "description": "JSON mulligans config"
         }
     },
     "required": [

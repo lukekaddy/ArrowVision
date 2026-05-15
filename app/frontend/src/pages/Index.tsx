@@ -18,6 +18,7 @@ interface Tournament {
   name: string;
   date: string;
   status: string;
+  location?: string;
   divisions?: string;
   num_targets?: number;
   courses?: string;
@@ -150,11 +151,16 @@ export default function Index() {
                       {t.status}
                     </span>
                   </div>
-                  <div className="flex items-center gap-4 text-sm text-slate-400">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-400">
                     <span className="flex items-center gap-1">
                       <Calendar className="h-3.5 w-3.5" /> {t.date}
                     </span>
-                    {courses.length > 0 && (
+                    {t.location && (
+                      <span className="flex items-center gap-1">
+                        <MapPin className="h-3.5 w-3.5 text-emerald-400/70" /> {t.location}
+                      </span>
+                    )}
+                    {!t.location && courses.length > 0 && (
                       <span className="flex items-center gap-1">
                         <MapPin className="h-3.5 w-3.5" /> {courses.length} course{courses.length > 1 ? 's' : ''}
                       </span>

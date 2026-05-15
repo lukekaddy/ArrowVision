@@ -211,6 +211,7 @@ class TournamentOpsService:
             "user_id": t.user_id,
             "name": t.name,
             "date": t.date,
+            "location": t.location,
             "num_targets": t.num_targets,
             "divisions": t.divisions,
             "courses": t.courses,
