@@ -1,0 +1,28 @@
+{
+    "title": "user_roles",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID from auth system"
+        },
+        "email": {
+            "type": "string",
+            "description": "User email address"
+        },
+        "role": {
+            "type": "string",
+            "description": "User role: admin or user"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "email",
+        "role"
+    ]
+}

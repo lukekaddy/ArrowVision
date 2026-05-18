@@ -1,12 +1,17 @@
-import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Menu, X, User, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const LOGO_URL = 'https://mgx-backend-cdn.metadl.com/generate/images/1230028/2026-05-14/orhciiaaagnq/arrowlive-logo.png';
 
-const NAV_LINKS = [
+interface NavLink {
+  to: string;
+  label: string;
+}
+
+const ALL_NAV_LINKS: NavLink[] = [
   { to: '/', label: 'Home' },
   { to: '/create-tournament', label: 'Create' },
   { to: '/scorecard', label: 'Scorecard' },
@@ -15,10 +20,35 @@ const NAV_LINKS = [
   { to: '/results', label: 'Results' },
 ];
 
+function getNavLinksForRole(role: string | null | undefined, isLoggedIn: boolean): NavLink[] {
+  if (!isLoggedIn) {
+    // Not logged in: Home, Leaderboard, Results
+    return ALL_NAV_LINKS.filter((l) =>
+      ['/', '/leaderboard', '/results'].includes(l.to)
+    );
+  }
+  if (role === 'admin') {
+    // Admin: all links
+    return ALL_NAV_LINKS;
+  }
+  // Regular user: no Create
+  return ALL_NAV_LINKS.filter((l) => l.to !== '/create-tournament');
+}
+
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const { user, login, logout } = useAuth();
+  const { user, login, logout, needsRoleSelection } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const navLinks = getNavLinksForRole(user?.role, !!user);
+
+  // Auto-redirect to role selection if needed
+  useEffect(() => {
+    if (user && needsRoleSelection && location.pathname !== '/role-select' && location.pathname !== '/auth/callback') {
+      navigate('/role-select');
+    }
+  }, [user, needsRoleSelection, location.pathname, navigate]);
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#0f172a' }}>
@@ -34,7 +64,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
           {/* Desktop Nav */}
           <nav className="hidden md:flex items-center gap-1">
-            {NAV_LINKS.map((link) => (
+            {navLinks.map((link) => (
               <Link
                 key={link.to}
                 to={link.to}
@@ -87,7 +117,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {/* Mobile Nav */}
         {menuOpen && (
           <div className="md:hidden border-t border-slate-700/50 px-4 py-3 space-y-1">
-            {NAV_LINKS.map((link) => (
+            {navLinks.map((link) => (
               <Link
                 key={link.to}
                 to={link.to}

@@ -34,6 +34,12 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 - [x] Save scores from SmartScore to localStorage for Scorecard persistence
 - [x] Generate realistic fixed-camera arrow hit video
 - [x] Fix post-score navigation: SmartScore passes context params back to Scorecard so it auto-shows target list
+- [x] Add user_roles database table and seed admin role for luke.kadillak@gmail.com
+- [x] Create backend API endpoint for get/set user roles
+- [x] Update AuthContext to fetch and store current user's role
+- [x] Add role-based navigation in Layout/Header
+- [x] Add route protection for admin-only pages
+- [x] Add role selection on first login for new users
 
 ## Progress Log
 - Backend tables created: tournaments, tournament_archers, scores
