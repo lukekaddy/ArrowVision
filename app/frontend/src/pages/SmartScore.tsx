@@ -1,11 +1,11 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
-import { Crosshair, ArrowLeft, Play, Edit3, Lock } from 'lucide-react';
+import { Crosshair, ArrowLeft, Play, Edit3, Lock, Loader2 } from 'lucide-react';
 
-const ARROW_VIDEO_URL = 'https://mgx-backend-cdn.metadl.com/generate/videos/1230028/2026-05-14/or3jxaaaafsq/fixed-camera-arrow-hit.mp4';
+const FALLBACK_VIDEO_URL = 'https://mgx-backend-cdn.metadl.com/generate/videos/1230028/2026-05-14/or3jxaaaafsq/fixed-camera-arrow-hit.mp4';
 
 export default function SmartScore() {
   const navigate = useNavigate();
@@ -24,8 +24,48 @@ export default function SmartScore() {
   const [submitting, setSubmitting] = useState(false);
   const [showOverride, setShowOverride] = useState(false);
   const [lockedScore] = useState(10);
+  const [replayVideoUrl, setReplayVideoUrl] = useState<string | null>(null);
+  const [loadingReplay, setLoadingReplay] = useState(false);
 
   const hasContext = tournamentId && archerId && targetNumber;
+
+  // Fetch replay video from backend
+  useEffect(() => {
+    if (!tournamentId || !archerId || !courseNumber || !targetNumber) return;
+
+    const fetchReplay = async () => {
+      setLoadingReplay(true);
+      try {
+        const response = await client.apiCall.invoke({
+          url: '/api/v1/replays/get',
+          method: 'GET',
+          data: {
+            tournament_id: parseInt(tournamentId),
+            archer_id: parseInt(archerId),
+            course_number: parseInt(courseNumber),
+            target_number: parseInt(targetNumber),
+          },
+        });
+
+        const objectKey = response?.data?.object_key;
+        if (objectKey) {
+          const downloadRes = await client.storage.getDownloadUrl({
+            bucket_name: 'arrow-replays',
+            object_key: objectKey,
+          });
+          if (downloadRes?.data?.download_url) {
+            setReplayVideoUrl(downloadRes.data.download_url);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching replay:', err);
+      } finally {
+        setLoadingReplay(false);
+      }
+    };
+
+    fetchReplay();
+  }, [tournamentId, archerId, courseNumber, targetNumber]);
 
   const toggleVideo = () => {
     if (!videoRef.current) return;
@@ -146,35 +186,43 @@ export default function SmartScore() {
         {/* Video Replay Section */}
         <div className="mb-6">
           <p className="text-slate-400 text-sm mb-3 text-center font-medium uppercase tracking-wider">Arrow Replay</p>
-          <div className="relative rounded-2xl overflow-hidden border-2 border-slate-700/50 bg-black">
-            <video
-              ref={videoRef}
-              src={ARROW_VIDEO_URL}
-              className="w-full aspect-video object-cover"
-              playsInline
-              onEnded={() => setIsPlaying(false)}
-              poster="/placeholder-target.jpg"
-            />
-            {/* Play/Pause Overlay */}
-            <button
-              onClick={toggleVideo}
-              className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/20 transition-colors"
-            >
-              {!isPlaying && (
-                <div className="w-16 h-16 rounded-full bg-emerald-500/90 flex items-center justify-center shadow-lg shadow-emerald-500/30">
-                  <Play className="h-7 w-7 text-white ml-1" />
-                </div>
-              )}
-            </button>
-          </div>
-          {/* Replay Button */}
-          <Button
-            onClick={replayVideo}
-            variant="ghost"
-            className="w-full mt-2 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 gap-2"
-          >
-            <Play className="h-4 w-4" /> Replay Clip
-          </Button>
+          {loadingReplay ? (
+            <div className="flex items-center justify-center h-48 bg-slate-800/50 rounded-2xl border-2 border-slate-700/50">
+              <Loader2 className="h-8 w-8 text-emerald-400 animate-spin" />
+            </div>
+          ) : (
+            <>
+              <div className="relative rounded-2xl overflow-hidden border-2 border-slate-700/50 bg-black">
+                <video
+                  ref={videoRef}
+                  src={replayVideoUrl || FALLBACK_VIDEO_URL}
+                  className="w-full aspect-video object-cover"
+                  playsInline
+                  onEnded={() => setIsPlaying(false)}
+                  poster="/placeholder-target.jpg"
+                />
+                {/* Play/Pause Overlay */}
+                <button
+                  onClick={toggleVideo}
+                  className="absolute inset-0 flex items-center justify-center bg-black/30 hover:bg-black/20 transition-colors"
+                >
+                  {!isPlaying && (
+                    <div className="w-16 h-16 rounded-full bg-emerald-500/90 flex items-center justify-center shadow-lg shadow-emerald-500/30">
+                      <Play className="h-7 w-7 text-white ml-1" />
+                    </div>
+                  )}
+                </button>
+              </div>
+              {/* Replay Button */}
+              <Button
+                onClick={replayVideo}
+                variant="ghost"
+                className="w-full mt-2 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 gap-2"
+              >
+                <Play className="h-4 w-4" /> Replay Clip
+              </Button>
+            </>
+          )}
         </div>
 
         {/* Locked Score Display */}

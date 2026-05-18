@@ -1,0 +1,48 @@
+{
+    "title": "replay_videos",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID of the uploader"
+        },
+        "tournament_id": {
+            "type": "integer",
+            "description": "Tournament ID"
+        },
+        "archer_id": {
+            "type": "integer",
+            "description": "Tournament archer ID"
+        },
+        "course_number": {
+            "type": "integer",
+            "description": "Course number"
+        },
+        "target_number": {
+            "type": "integer",
+            "description": "Target number"
+        },
+        "object_key": {
+            "type": "string",
+            "description": "Object storage key for the video file"
+        },
+        "visibility": {
+            "type": "string",
+            "description": "public or private",
+            "default": "public"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "tournament_id",
+        "archer_id",
+        "course_number",
+        "target_number",
+        "object_key"
+    ]
+}
