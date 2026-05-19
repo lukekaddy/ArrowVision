@@ -28,6 +28,13 @@ class RegisterArcherRequest(BaseModel):
     purchased_mulligans: Optional[str] = None
 
 
+class CreateScorecardRequest(BaseModel):
+    tournament_id: int
+    template_name: str
+    score_values: List[int]
+    is_custom: bool = False
+
+
 class SubmitScoreRequest(BaseModel):
     tournament_id: int
     archer_id: int
@@ -193,4 +200,46 @@ async def export_results(
         raise
     except Exception as e:
         logger.error(f"Error exporting results: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------- Scorecard Template Routes ----------
+@router.post("/create-scorecard")
+async def create_scorecard(
+    data: CreateScorecardRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a scoring template for a tournament"""
+    service = TournamentOpsService(db)
+    try:
+        import json
+        template_data = {
+            "tournament_id": data.tournament_id,
+            "template_name": data.template_name,
+            "score_values": json.dumps(data.score_values),
+            "is_custom": data.is_custom,
+        }
+        return await service.create_scoring_template(template_data, user_id=str(current_user.id))
+    except Exception as e:
+        logger.error(f"Error creating scorecard template: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/scorecard-template/{tournament_id}")
+async def get_scorecard_template(
+    tournament_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the scoring template for a tournament (public)"""
+    service = TournamentOpsService(db)
+    try:
+        result = await service.get_scoring_template_by_tournament(tournament_id)
+        if not result:
+            raise HTTPException(status_code=404, detail="Scorecard template not found for this tournament")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching scorecard template: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

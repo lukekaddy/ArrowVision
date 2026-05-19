@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.tournaments import Tournaments
 from models.tournament_archers import Tournament_archers
 from models.scores import Scores
+from models.scoring_templates import Scoring_templates
 
 logger = logging.getLogger(__name__)
 
@@ -312,4 +313,43 @@ class TournamentOpsService:
             "score_value": s.score_value,
             "confirmed": s.confirmed,
             "created_at": s.created_at.isoformat() if s.created_at else None,
+        }
+
+    # ---------- Scoring Template Methods ----------
+
+    async def create_scoring_template(self, data: Dict[str, Any], user_id: str) -> Dict:
+        """Create a scoring template for a tournament"""
+        template = Scoring_templates(
+            user_id=user_id,
+            tournament_id=data["tournament_id"],
+            template_name=data["template_name"],
+            score_values=data["score_values"],
+            is_custom=data.get("is_custom", False),
+        )
+        self.db.add(template)
+        await self.db.commit()
+        await self.db.refresh(template)
+        return self._scoring_template_to_dict(template)
+
+    async def get_scoring_template_by_tournament(self, tournament_id: int) -> Optional[Dict]:
+        """Get the scoring template for a tournament (returns the latest one)"""
+        query = select(Scoring_templates).where(
+            Scoring_templates.tournament_id == tournament_id
+        ).order_by(Scoring_templates.created_at.desc())
+        result = await self.db.execute(query)
+        template = result.scalars().first()
+        if not template:
+            return None
+        return self._scoring_template_to_dict(template)
+
+    def _scoring_template_to_dict(self, t: Scoring_templates) -> Dict:
+        return {
+            "id": t.id,
+            "user_id": t.user_id,
+            "tournament_id": t.tournament_id,
+            "template_name": t.template_name,
+            "score_values": t.score_values,
+            "is_custom": t.is_custom,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+            "updated_at": t.updated_at.isoformat() if t.updated_at else None,
         }

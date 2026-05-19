@@ -10,6 +10,12 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 
 ## Task Breakdown
 - [x] Create database tables (tournaments, tournament_archers, scores)
+- [x] Create scoring_templates database table
+- [x] Create backend API endpoints for scorecard template CRUD
+- [x] Build Create Scorecard page with 2 templates + custom option
+- [x] Update TournamentCreate flow to navigate to Create Scorecard after creation
+- [x] Update Scorecard page to inherit scoring template from tournament
+- [x] Add routing for Create Scorecard page
 - [x] Create custom backend API for cross-user operations (leaderboard, public tournaments, register, score submission)
 - [x] Generate project images (hero banner, target, logo, tournament scene)
 - [x] Build shared components (Layout, Header, AuthProvider)
@@ -66,3 +72,7 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 - Backend: Updated register-archer endpoint and service to handle new fields
 - Updated: Scorecard no longer has score buttons — target number is now clickable, navigates to Smart Score with full context
 - Updated: Smart Score page fully rewritten — reads target/archer/course from URL params, before/after camera capture, score submission via API, confirmation with back navigation
+- Added: Create Scorecard feature - scoring_templates DB table, POST/GET API endpoints, CreateScorecard page with Standard/Extended/Custom templates
+- Updated: TournamentCreate navigates to Create Scorecard after tournament creation
+- Updated: Scorecard fetches scoring template and passes scoreValues to SmartScore
+- Updated: SmartScore dynamically renders score buttons from template values (falls back to [10,8,5,0])

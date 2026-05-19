@@ -27,6 +27,11 @@ interface Archer {
   group_number: number | null;
 }
 
+interface ScoringTemplate {
+  template_name: string;
+  score_values: number[];
+}
+
 export default function Scorecard() {
   const { user, login } = useAuth();
   const client = getClient();
@@ -40,6 +45,7 @@ export default function Scorecard() {
   const [selectedArcher, setSelectedArcher] = useState<Archer | null>(null);
   const [showTargets, setShowTargets] = useState(false);
   const [scores, setScores] = useState<Record<number, number>>({});
+  const [scoringTemplate, setScoringTemplate] = useState<ScoringTemplate | null>(null);
   const restoredFromParams = useRef(false);
 
   const getStorageKey = useCallback(() => {
@@ -127,6 +133,16 @@ export default function Scorecard() {
             } catch {
               setArchers([]);
             }
+
+            // Fetch scoring template for this tournament
+            try {
+              const templateRes = await client.apiCall.invoke({ url: `/api/v1/tournament/scorecard-template/${paramTournamentId}`, method: 'GET', data: {} });
+              if (templateRes?.data) {
+                setScoringTemplate(templateRes.data);
+              }
+            } catch {
+              // Template not set, will use defaults
+            }
           }
           // Clear the search params from URL to avoid stale state on refresh
           setSearchParams({}, { replace: true });
@@ -137,6 +153,19 @@ export default function Scorecard() {
     };
     fetchTournaments();
   }, []);
+
+  const fetchScoringTemplate = async (tournamentId: string) => {
+    try {
+      const res = await client.apiCall.invoke({ url: `/api/v1/tournament/scorecard-template/${tournamentId}`, method: 'GET', data: {} });
+      if (res?.data) {
+        setScoringTemplate(res.data);
+      } else {
+        setScoringTemplate(null);
+      }
+    } catch {
+      setScoringTemplate(null);
+    }
+  };
 
   const selectTournament = async (id: string) => {
     const t = tournaments.find((t) => t.id === parseInt(id));
@@ -161,6 +190,9 @@ export default function Scorecard() {
     } catch {
       setArchers([]);
     }
+
+    // Fetch scoring template for this tournament
+    await fetchScoringTemplate(id);
   };
 
   const selectCourse = (courseNum: string) => {
@@ -182,6 +214,9 @@ export default function Scorecard() {
       targetNumber: targetNum.toString(),
       maxTargets: maxTargets.toString(),
     });
+    if (scoringTemplate?.score_values) {
+      params.set('scoreValues', JSON.stringify(scoringTemplate.score_values));
+    }
     navigate(`/smart-score?${params.toString()}`);
   };
 
@@ -276,6 +311,11 @@ export default function Scorecard() {
                   <p className="text-emerald-400 text-sm">
                     {selectedCourse?.name || `Course ${selectedCourse?.course || 1}`} · {maxTargets} targets
                   </p>
+                  {scoringTemplate && (
+                    <p className="text-slate-400 text-xs mt-1">
+                      Scoring: {scoringTemplate.template_name} ({scoringTemplate.score_values.map(v => v === 0 ? 'Miss' : v).join('/')})
+                    </p>
+                  )}
                   <p className="text-amber-400 font-bold text-lg mt-2">Total Score: {totalScore}</p>
                 </div>
 

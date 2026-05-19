@@ -14,6 +14,7 @@ import SmartScore from './pages/SmartScore';
 import Results from './pages/Results';
 import RoleSelection from './pages/RoleSelection';
 import AdminUploadReplay from './pages/AdminUploadReplay';
+import CreateScorecard from './pages/CreateScorecard';
 
 const queryClient = new QueryClient();
 
@@ -21,6 +22,7 @@ const AppRoutes = () => (
   <Routes>
     <Route path="/" element={<Index />} />
     <Route path="/create-tournament" element={<TournamentCreate />} />
+    <Route path="/create-scorecard" element={<CreateScorecard />} />
     <Route path="/dashboard/:id" element={<TournamentDashboard />} />
     <Route path="/scorecard" element={<Scorecard />} />
     <Route path="/leaderboard" element={<Leaderboard />} />

@@ -163,7 +163,7 @@ export default function TournamentCreate() {
       });
       const id = res?.data?.id;
       if (id) {
-        navigate(`/dashboard/${id}`);
+        navigate(`/create-scorecard?tournament_id=${id}`);
       } else {
         navigate('/');
       }

@@ -19,11 +19,27 @@ export default function SmartScore() {
   const archerName = searchParams.get('archerName');
   const targetNumber = searchParams.get('targetNumber');
   const maxTargets = searchParams.get('maxTargets');
+  const scoreValuesParam = searchParams.get('scoreValues');
+
+  // Parse scoreValues from URL param or fall back to default [10, 8, 5, 0]
+  const scoreValues: number[] = (() => {
+    if (scoreValuesParam) {
+      try {
+        const parsed = JSON.parse(scoreValuesParam);
+        if (Array.isArray(parsed) && parsed.every((v: unknown) => typeof v === 'number')) {
+          return parsed;
+        }
+      } catch {
+        // fall through to default
+      }
+    }
+    return [10, 8, 5, 0];
+  })();
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [showOverride, setShowOverride] = useState(false);
-  const [lockedScore] = useState(10);
+  const [lockedScore] = useState(scoreValues[0] ?? 10);
   const [replayVideoUrl, setReplayVideoUrl] = useState<string | null>(null);
   const [loadingReplay, setLoadingReplay] = useState(false);
 
@@ -153,12 +169,20 @@ export default function SmartScore() {
 
 
 
-  const OVERRIDE_SCORES = [
-    { value: 10, label: '10', color: 'bg-amber-500 hover:bg-amber-600' },
-    { value: 8, label: '8', color: 'bg-red-500 hover:bg-red-600' },
-    { value: 5, label: '5', color: 'bg-blue-500 hover:bg-blue-600' },
-    { value: 0, label: 'Miss', color: 'bg-slate-600 hover:bg-slate-700' },
+  const SCORE_COLORS = [
+    'bg-amber-500 hover:bg-amber-600',
+    'bg-red-500 hover:bg-red-600',
+    'bg-blue-500 hover:bg-blue-600',
+    'bg-slate-600 hover:bg-slate-700',
+    'bg-purple-500 hover:bg-purple-600',
+    'bg-teal-500 hover:bg-teal-600',
   ];
+
+  const OVERRIDE_SCORES = scoreValues.map((value, index) => ({
+    value,
+    label: value === 0 ? 'Miss' : String(value),
+    color: SCORE_COLORS[index % SCORE_COLORS.length],
+  }));
 
   return (
     <Layout>
