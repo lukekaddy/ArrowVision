@@ -8,19 +8,19 @@
         },
         "user_id": {
             "type": "string",
-            "description": "User ID of creator"
+            "description": "User ID"
         },
         "tournament_id": {
             "type": "integer",
-            "description": "Tournament this template belongs to"
+            "description": "Tournament ID, nullable"
         },
         "template_name": {
             "type": "string",
-            "description": "Name of the scoring template"
+            "description": "Template name"
         },
         "score_values": {
             "type": "string",
-            "description": "JSON array of score values e.g. [10,8,5,0]"
+            "description": "Comma-separated score values"
         },
         "is_custom": {
             "type": "boolean",
@@ -30,7 +30,6 @@
     "required": [
         "id",
         "user_id",
-        "tournament_id",
         "template_name",
         "score_values"
     ]

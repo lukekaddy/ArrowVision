@@ -9,7 +9,7 @@ class Scoring_templates(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True, nullable=False)
     user_id = Column(String, nullable=False)
-    tournament_id = Column(Integer, nullable=False)
+    tournament_id = Column(Integer, nullable=True)
     template_name = Column(String, nullable=False)
     score_values = Column(String, nullable=False)
     is_custom = Column(Boolean, nullable=True)

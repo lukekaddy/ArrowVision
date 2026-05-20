@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/v1/entities/scoring_templates", tags=["scoring_t
 # ---------- Pydantic Schemas ----------
 class Scoring_templatesData(BaseModel):
     """Entity data schema (for create/update)"""
-    tournament_id: int
+    tournament_id: int = None
     template_name: str
     score_values: str
     is_custom: bool = None
@@ -40,7 +40,7 @@ class Scoring_templatesResponse(BaseModel):
     """Entity response schema"""
     id: int
     user_id: str
-    tournament_id: int
+    tournament_id: Optional[int] = None
     template_name: str
     score_values: str
     is_custom: Optional[bool] = None
