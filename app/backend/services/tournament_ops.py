@@ -318,10 +318,10 @@ class TournamentOpsService:
     # ---------- Scoring Template Methods ----------
 
     async def create_scoring_template(self, data: Dict[str, Any], user_id: str) -> Dict:
-        """Create a scoring template for a tournament"""
+        """Create a scoring template, optionally linked to a tournament"""
         template = Scoring_templates(
             user_id=user_id,
-            tournament_id=data["tournament_id"],
+            tournament_id=data.get("tournament_id"),
             template_name=data["template_name"],
             score_values=data["score_values"],
             is_custom=data.get("is_custom", False),
@@ -330,6 +330,15 @@ class TournamentOpsService:
         await self.db.commit()
         await self.db.refresh(template)
         return self._scoring_template_to_dict(template)
+
+    async def get_scoring_templates_by_user(self, user_id: str) -> List[Dict]:
+        """Get all scoring templates created by a user"""
+        query = select(Scoring_templates).where(
+            Scoring_templates.user_id == user_id
+        ).order_by(Scoring_templates.created_at.desc())
+        result = await self.db.execute(query)
+        templates = result.scalars().all()
+        return [self._scoring_template_to_dict(t) for t in templates]
 
     async def get_scoring_template_by_tournament(self, tournament_id: int) -> Optional[Dict]:
         """Get the scoring template for a tournament (returns the latest one)"""

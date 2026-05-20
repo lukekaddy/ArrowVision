@@ -29,7 +29,7 @@ class RegisterArcherRequest(BaseModel):
 
 
 class CreateScorecardRequest(BaseModel):
-    tournament_id: int
+    tournament_id: Optional[int] = None
     template_name: str
     score_values: List[int]
     is_custom: bool = False
@@ -223,6 +223,20 @@ async def create_scorecard(
         return await service.create_scoring_template(template_data, user_id=str(current_user.id))
     except Exception as e:
         logger.error(f"Error creating scorecard template: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/scoring-templates")
+async def get_scoring_templates(
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all scoring templates for the current user"""
+    service = TournamentOpsService(db)
+    try:
+        return await service.get_scoring_templates_by_user(user_id=str(current_user.id))
+    except Exception as e:
+        logger.error(f"Error fetching scoring templates: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
