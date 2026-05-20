@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Trophy, Plus, X, Check, MapPin, Eye, ExternalLink } from 'lucide-react';
+import { Trophy, Plus, X, Check, MapPin, Eye, ExternalLink, Upload, Trash2, Map } from 'lucide-react';
 
 const DIVISION_OPTIONS = [
   'Recurve',
@@ -52,6 +52,11 @@ export default function TournamentCreate() {
   const client = getClient();
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
+  // Course Map upload
+  const [courseMapUrl, setCourseMapUrl] = useState('');
+  const [courseMapPreview, setCourseMapPreview] = useState('');
+  const [uploadingCourseMap, setUploadingCourseMap] = useState(false);
+  const courseMapInputRef = useRef<HTMLInputElement>(null);
   const [location, setLocation] = useState('');
   const [date, setDate] = useState('');
   const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
@@ -268,20 +273,29 @@ export default function TournamentCreate() {
 
           {/* Scorecard Selection */}
           <div>
-            <Label className="text-slate-300 mb-2 block">Scoring Template</Label>
+            <Label className="text-slate-300 mb-2 block">Select Scorecard</Label>
             <div className="space-y-3">
               <div className="flex gap-2">
                 <div className="flex-1">
                   <Select value={selectedScorecardId} onValueChange={(val) => { setSelectedScorecardId(val); setShowPreview(false); }}>
                     <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-12">
-                      <SelectValue placeholder="Select a scorecard template..." />
+                      <SelectValue placeholder="Select a scorecard..." />
                     </SelectTrigger>
                     <SelectContent className="bg-slate-800 border-slate-700">
-                      {savedScorecards.map((sc) => (
-                        <SelectItem key={sc.id} value={sc.id.toString()} className="text-white">
-                          {sc.template_name}
-                        </SelectItem>
-                      ))}
+                      {savedScorecards.map((sc) => {
+                        let displayName = sc.template_name;
+                        try {
+                          const parsed = JSON.parse(sc.template_name);
+                          displayName = parsed.name || sc.template_name;
+                        } catch {
+                          // use template_name as-is
+                        }
+                        return (
+                          <SelectItem key={sc.id} value={sc.id.toString()} className="text-white">
+                            {displayName}
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                 </div>
@@ -329,6 +343,96 @@ export default function TournamentCreate() {
                 No scorecards found. Create one first or the default scoring will be used.
               </p>
             )}
+          </div>
+
+          {/* Course Map Upload */}
+          <div>
+            <Label className="text-slate-300 mb-1.5 block flex items-center gap-1.5">
+              <Map className="h-4 w-4 text-emerald-400" />
+              Course Map
+            </Label>
+            <input
+              ref={courseMapInputRef}
+              type="file"
+              accept="image/*"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const localPreview = URL.createObjectURL(file);
+                setCourseMapPreview(localPreview);
+                setUploadingCourseMap(true);
+                try {
+                  const objectKey = `maps/${Date.now()}-${file.name}`;
+                  const bucketName = 'course-maps';
+                  const uploadRes = await client.storage.getUploadUrl({
+                    bucket_name: bucketName,
+                    object_key: objectKey,
+                  });
+                  const uploadUrl = uploadRes.data.upload_url;
+                  await fetch(uploadUrl, {
+                    method: 'PUT',
+                    body: file,
+                    headers: { 'Content-Type': file.type },
+                  });
+                  const downloadRes = await client.storage.getDownloadUrl({
+                    bucket_name: bucketName,
+                    object_key: objectKey,
+                  });
+                  setCourseMapUrl(downloadRes.data.download_url);
+                } catch (err) {
+                  console.error('Failed to upload course map:', err);
+                  setCourseMapPreview('');
+                  setCourseMapUrl('');
+                } finally {
+                  setUploadingCourseMap(false);
+                }
+              }}
+              className="hidden"
+            />
+            {courseMapPreview || courseMapUrl ? (
+              <div className="relative rounded-xl overflow-hidden border border-slate-700/50 bg-slate-900">
+                <img
+                  src={courseMapPreview || courseMapUrl}
+                  alt="Course map preview"
+                  className="w-full h-40 object-cover"
+                />
+                {uploadingCourseMap && (
+                  <div className="absolute inset-0 bg-slate-900/70 flex items-center justify-center">
+                    <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium">
+                      <div className="h-4 w-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+                      Uploading...
+                    </div>
+                  </div>
+                )}
+                {!uploadingCourseMap && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCourseMapUrl('');
+                      setCourseMapPreview('');
+                      if (courseMapInputRef.current) courseMapInputRef.current.value = '';
+                    }}
+                    className="absolute top-2 right-2 h-8 w-8 flex items-center justify-center rounded-full bg-slate-900/80 border border-slate-600 text-slate-300 hover:text-red-400 hover:border-red-500/50 transition-colors"
+                    aria-label="Remove course map"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => courseMapInputRef.current?.click()}
+                className="w-full h-32 rounded-xl border-2 border-dashed border-slate-700 bg-slate-900/50 hover:border-emerald-500/50 hover:bg-slate-900 transition-colors flex flex-col items-center justify-center gap-2 group"
+              >
+                <Upload className="h-8 w-8 text-slate-500 group-hover:text-emerald-400 transition-colors" />
+                <span className="text-sm text-slate-400 group-hover:text-slate-300 transition-colors">
+                  Click to upload course map
+                </span>
+                <span className="text-xs text-slate-600">PNG, JPG, or WebP</span>
+              </button>
+            )}
+            <p className="text-xs text-slate-500 mt-1">Optional image showing the course layout and target locations</p>
           </div>
 
           {/* Divisions Multi-Pick */}
