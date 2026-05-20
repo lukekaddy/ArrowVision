@@ -351,6 +351,42 @@ class TournamentOpsService:
             return None
         return self._scoring_template_to_dict(template)
 
+    async def update_scoring_template(self, template_id: int, data: Dict[str, Any], user_id: str) -> Optional[Dict]:
+        """Update a scoring template owned by the user"""
+        query = select(Scoring_templates).where(
+            Scoring_templates.id == template_id,
+            Scoring_templates.user_id == user_id,
+        )
+        result = await self.db.execute(query)
+        template = result.scalar_one_or_none()
+        if not template:
+            return None
+        if "template_name" in data:
+            template.template_name = data["template_name"]
+        if "score_values" in data:
+            template.score_values = data["score_values"]
+        if "is_custom" in data:
+            template.is_custom = data["is_custom"]
+        if "tournament_id" in data:
+            template.tournament_id = data["tournament_id"]
+        await self.db.commit()
+        await self.db.refresh(template)
+        return self._scoring_template_to_dict(template)
+
+    async def delete_scoring_template(self, template_id: int, user_id: str) -> bool:
+        """Delete a scoring template owned by the user"""
+        query = select(Scoring_templates).where(
+            Scoring_templates.id == template_id,
+            Scoring_templates.user_id == user_id,
+        )
+        result = await self.db.execute(query)
+        template = result.scalar_one_or_none()
+        if not template:
+            return False
+        await self.db.delete(template)
+        await self.db.commit()
+        return True
+
     def _scoring_template_to_dict(self, t: Scoring_templates) -> Dict:
         return {
             "id": t.id,

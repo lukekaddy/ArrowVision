@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ClipboardList, Plus, X, Search, Image, Target, Upload, Trash2 } from 'lucide-react';
+import { ClipboardList, Plus, X, Search, Image, Target, Upload, Trash2, Pencil } from 'lucide-react';
 
 interface ScoreEntry {
   label: string;
@@ -73,10 +73,16 @@ export default function CreateScorecard() {
   const [includeMiss, setIncludeMiss] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  // Edit mode state
+  const [editingId, setEditingId] = useState<number | null>(null);
+
   // Saved scorecards state
   const [savedScorecards, setSavedScorecards] = useState<SavedScorecard[]>([]);
   const [loadingSaved, setLoadingSaved] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Ref to scroll to form when editing
+  const formRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (user) {
@@ -99,6 +105,38 @@ export default function CreateScorecard() {
     } finally {
       setLoadingSaved(false);
     }
+  };
+
+  const resetForm = () => {
+    setEditingId(null);
+    setName('');
+    setDescription('');
+    setThumbnailUrl('');
+    setThumbnailPreview('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    setEntries([...DEFAULT_ENTRIES]);
+    setIncludeMiss(true);
+  };
+
+  const startEditing = (sc: SavedScorecard) => {
+    const parsed = parseScorecardData(sc.template_name, sc.score_values);
+    setEditingId(sc.id);
+    setName(parsed.name);
+    setDescription(parsed.description);
+    setThumbnailUrl(parsed.thumbnail_url);
+    setThumbnailPreview(parsed.thumbnail_url);
+
+    // Separate out the Miss entry from the rest
+    const missEntry = parsed.entries.find((e) => e.label === 'Miss' && e.points === 0);
+    const nonMissEntries = parsed.entries.filter((e) => !(e.label === 'Miss' && e.points === 0));
+
+    setIncludeMiss(!!missEntry);
+    setEntries(nonMissEntries.length > 0 ? nonMissEntries : [...DEFAULT_ENTRIES]);
+
+    // Scroll to form
+    setTimeout(() => {
+      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
   };
 
   if (!user) {
@@ -204,33 +242,60 @@ export default function CreateScorecard() {
 
     setSaving(true);
     try {
-      await client.apiCall.invoke({
-        url: '/api/v1/tournament/create-scorecard',
-        method: 'POST',
-        data: {
-          tournament_id: tournamentId ? parseInt(tournamentId) : undefined,
-          template_name: templateData,
-          score_values: scoreValues,
-          is_custom: true,
-        },
-      });
-      if (tournamentId) {
+      if (editingId) {
+        // Update existing scorecard
+        await client.apiCall.invoke({
+          url: `/api/v1/tournament/update-scorecard/${editingId}`,
+          method: 'PUT',
+          data: {
+            template_name: templateData,
+            score_values: scoreValues,
+            is_custom: true,
+          },
+        });
+      } else {
+        // Create new scorecard
+        await client.apiCall.invoke({
+          url: '/api/v1/tournament/create-scorecard',
+          method: 'POST',
+          data: {
+            tournament_id: tournamentId ? parseInt(tournamentId) : undefined,
+            template_name: templateData,
+            score_values: scoreValues,
+            is_custom: true,
+          },
+        });
+      }
+
+      if (tournamentId && !editingId) {
         navigate(`/dashboard/${tournamentId}`);
       } else {
         // Refresh saved list and reset form
         await fetchSavedScorecards();
-        setName('');
-        setDescription('');
-        setThumbnailUrl('');
-        setThumbnailPreview('');
-        if (fileInputRef.current) fileInputRef.current.value = '';
-        setEntries([...DEFAULT_ENTRIES]);
-        setIncludeMiss(true);
+        resetForm();
       }
     } catch (err) {
-      console.error('Failed to create scorecard:', err);
+      console.error(`Failed to ${editingId ? 'update' : 'create'} scorecard:`, err);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this scorecard?')) return;
+    try {
+      await client.apiCall.invoke({
+        url: `/api/v1/tournament/delete-scorecard/${id}`,
+        method: 'DELETE',
+        data: {},
+      });
+      // If we were editing this one, reset the form
+      if (editingId === id) {
+        resetForm();
+      }
+      await fetchSavedScorecards();
+    } catch (err) {
+      console.error('Failed to delete scorecard:', err);
     }
   };
 
@@ -257,12 +322,35 @@ export default function CreateScorecard() {
           </p>
         </div>
 
-        {/* Section 1: Create New Scorecard */}
-        <div className="rounded-2xl border border-emerald-500/30 bg-slate-800/40 p-6">
-          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-            <Plus className="h-5 w-5 text-emerald-400" />
-            Create New Scorecard
-          </h2>
+        {/* Section 1: Create / Edit Scorecard */}
+        <div ref={formRef} className="rounded-2xl border border-emerald-500/30 bg-slate-800/40 p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              {editingId ? (
+                <>
+                  <Pencil className="h-5 w-5 text-amber-400" />
+                  Edit Scorecard
+                </>
+              ) : (
+                <>
+                  <Plus className="h-5 w-5 text-emerald-400" />
+                  Create New Scorecard
+                </>
+              )}
+            </h2>
+            {editingId && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={resetForm}
+                className="border-slate-600 text-slate-300 hover:bg-slate-700/50"
+              >
+                <X className="h-4 w-4 mr-1" />
+                Cancel Edit
+              </Button>
+            )}
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Name */}
@@ -442,13 +530,30 @@ export default function CreateScorecard() {
             <Button
               type="submit"
               disabled={saving || !canSave}
-              className="w-full h-12 bg-emerald-500 hover:bg-emerald-600 text-white text-lg font-semibold disabled:opacity-50"
+              className={`w-full h-12 text-white text-lg font-semibold disabled:opacity-50 ${
+                editingId
+                  ? 'bg-amber-500 hover:bg-amber-600'
+                  : 'bg-emerald-500 hover:bg-emerald-600'
+              }`}
             >
-              {saving ? 'Saving...' : 'Save Scorecard'}
+              {saving
+                ? editingId ? 'Updating...' : 'Saving...'
+                : editingId ? 'Update Scorecard' : 'Save Scorecard'}
             </Button>
 
+            {/* Cancel Edit button (additional, below submit for mobile) */}
+            {editingId && (
+              <button
+                type="button"
+                onClick={resetForm}
+                className="w-full text-center text-sm text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                Cancel editing and create a new scorecard instead
+              </button>
+            )}
+
             {/* Skip option (only if coming from tournament creation) */}
-            {tournamentId && (
+            {tournamentId && !editingId && (
               <button
                 type="button"
                 onClick={() => navigate(`/dashboard/${tournamentId}`)}
@@ -502,23 +607,30 @@ export default function CreateScorecard() {
             <div className="grid gap-3 sm:grid-cols-2">
               {filteredScorecards.map((sc) => {
                 const parsed = parseScorecardData(sc.template_name, sc.score_values);
+                const isBeingEdited = editingId === sc.id;
                 return (
                   <div
                     key={sc.id}
-                    className="p-4 rounded-xl border border-slate-700/50 bg-slate-900/50 hover:border-slate-600 transition-colors"
+                    className={`p-4 rounded-xl border transition-colors ${
+                      isBeingEdited
+                        ? 'border-amber-500/50 bg-amber-500/5'
+                        : 'border-slate-700/50 bg-slate-900/50 hover:border-slate-600'
+                    }`}
                   >
                     <div className="flex items-start justify-between mb-2">
                       <h3 className="text-white font-semibold text-sm leading-tight">{parsed.name}</h3>
-                      {sc.is_custom && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-medium shrink-0 ml-2">
-                          Custom
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1 shrink-0 ml-2">
+                        {sc.is_custom && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-medium">
+                            Custom
+                          </span>
+                        )}
+                      </div>
                     </div>
                     {parsed.description && (
                       <p className="text-xs text-slate-400 mb-3 line-clamp-2">{parsed.description}</p>
                     )}
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap gap-1.5 mb-3">
                       {parsed.entries.map((entry, idx) => (
                         <span
                           key={idx}
@@ -529,7 +641,7 @@ export default function CreateScorecard() {
                       ))}
                     </div>
                     {parsed.thumbnail_url && (
-                      <div className="mt-3 rounded-lg overflow-hidden border border-slate-700/50">
+                      <div className="mb-3 rounded-lg overflow-hidden border border-slate-700/50">
                         <img
                           src={parsed.thumbnail_url}
                           alt={`${parsed.name} scoring zones`}
@@ -540,6 +652,33 @@ export default function CreateScorecard() {
                         />
                       </div>
                     )}
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => startEditing(sc)}
+                        disabled={isBeingEdited}
+                        className={`flex-1 h-8 text-xs ${
+                          isBeingEdited
+                            ? 'border-amber-500/50 text-amber-400 opacity-70'
+                            : 'border-slate-600 text-slate-300 hover:bg-slate-700/50 hover:text-emerald-400 hover:border-emerald-500/50'
+                        }`}
+                      >
+                        <Pencil className="h-3 w-3 mr-1" />
+                        {isBeingEdited ? 'Editing...' : 'Edit'}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDelete(sc.id)}
+                        className="h-8 text-xs border-slate-600 text-slate-400 hover:bg-red-500/10 hover:text-red-400 hover:border-red-500/50"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
                   </div>
                 );
               })}

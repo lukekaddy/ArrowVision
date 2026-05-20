@@ -35,6 +35,13 @@ class CreateScorecardRequest(BaseModel):
     is_custom: bool = False
 
 
+class UpdateScorecardRequest(BaseModel):
+    tournament_id: Optional[int] = None
+    template_name: Optional[str] = None
+    score_values: Optional[List[int]] = None
+    is_custom: Optional[bool] = None
+
+
 class SubmitScoreRequest(BaseModel):
     tournament_id: int
     archer_id: int
@@ -237,6 +244,58 @@ async def get_scoring_templates(
         return await service.get_scoring_templates_by_user(user_id=str(current_user.id))
     except Exception as e:
         logger.error(f"Error fetching scoring templates: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/update-scorecard/{template_id}")
+async def update_scorecard(
+    template_id: int,
+    data: UpdateScorecardRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a scoring template"""
+    service = TournamentOpsService(db)
+    try:
+        import json
+        update_data = {}
+        if data.template_name is not None:
+            update_data["template_name"] = data.template_name
+        if data.score_values is not None:
+            update_data["score_values"] = json.dumps(data.score_values)
+        if data.is_custom is not None:
+            update_data["is_custom"] = data.is_custom
+        if data.tournament_id is not None:
+            update_data["tournament_id"] = data.tournament_id
+
+        result = await service.update_scoring_template(template_id, update_data, user_id=str(current_user.id))
+        if not result:
+            raise HTTPException(status_code=404, detail="Scorecard template not found or not owned by user")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating scorecard template: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/delete-scorecard/{template_id}")
+async def delete_scorecard(
+    template_id: int,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a scoring template"""
+    service = TournamentOpsService(db)
+    try:
+        success = await service.delete_scoring_template(template_id, user_id=str(current_user.id))
+        if not success:
+            raise HTTPException(status_code=404, detail="Scorecard template not found or not owned by user")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting scorecard template: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
