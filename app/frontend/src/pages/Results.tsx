@@ -32,7 +32,7 @@ interface ScoreDetail {
 interface SavedScorecard {
   id: number;
   template_name: string;
-  score_values: number[];
+  score_values: number[] | string;
   is_custom: boolean;
 }
 
@@ -406,29 +406,36 @@ export default function Results() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {filteredScorecards.map((sc) => (
-                    <div
-                      key={sc.id}
-                      className="p-4 rounded-lg border border-slate-700/50 bg-slate-800/50"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-white font-medium">{sc.template_name}</h3>
-                        {sc.is_custom && (
-                          <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-400">Custom</span>
-                        )}
+                  {filteredScorecards.map((sc) => {
+                    const scoreValues: number[] = typeof sc.score_values === 'string'
+                      ? JSON.parse(sc.score_values)
+                      : Array.isArray(sc.score_values)
+                        ? sc.score_values
+                        : [];
+                    return (
+                      <div
+                        key={sc.id}
+                        className="p-4 rounded-lg border border-slate-700/50 bg-slate-800/50"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <h3 className="text-white font-medium">{sc.template_name}</h3>
+                          {sc.is_custom && (
+                            <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-400">Custom</span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {scoreValues.map((val) => (
+                            <span
+                              key={val}
+                              className="px-2.5 py-1 rounded text-xs font-bold bg-slate-700 text-slate-300"
+                            >
+                              {val === 0 ? 'Miss' : val}
+                            </span>
+                          ))}
+                        </div>
                       </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {(sc.score_values || []).map((val) => (
-                          <span
-                            key={val}
-                            className="px-2.5 py-1 rounded text-xs font-bold bg-slate-700 text-slate-300"
-                          >
-                            {val === 0 ? 'Miss' : val}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
