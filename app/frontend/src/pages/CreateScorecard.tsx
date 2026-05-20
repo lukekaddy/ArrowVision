@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ClipboardList, Plus, X, Search, Image, Target } from 'lucide-react';
+import { ClipboardList, Plus, X, Search, Image, Target, Upload, Trash2 } from 'lucide-react';
 
 interface ScoreEntry {
   label: string;
@@ -66,6 +66,9 @@ export default function CreateScorecard() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [thumbnailUrl, setThumbnailUrl] = useState('');
+  const [thumbnailPreview, setThumbnailPreview] = useState('');
+  const [uploadingThumbnail, setUploadingThumbnail] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [entries, setEntries] = useState<ScoreEntry[]>([...DEFAULT_ENTRIES]);
   const [includeMiss, setIncludeMiss] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -112,6 +115,57 @@ export default function CreateScorecard() {
       </Layout>
     );
   }
+
+  const handleThumbnailUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Show local preview immediately
+    const localPreview = URL.createObjectURL(file);
+    setThumbnailPreview(localPreview);
+    setUploadingThumbnail(true);
+
+    try {
+      const objectKey = `thumbnails/${Date.now()}-${file.name}`;
+      const bucketName = 'scorecard-thumbnails';
+
+      // Get upload presigned URL
+      const uploadRes = await client.storage.getUploadUrl({
+        bucket_name: bucketName,
+        object_key: objectKey,
+      });
+      const uploadUrl = uploadRes.data.upload_url;
+
+      // Upload the file to the presigned URL
+      await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type },
+      });
+
+      // Get download URL to use as the thumbnail URL
+      const downloadRes = await client.storage.getDownloadUrl({
+        bucket_name: bucketName,
+        object_key: objectKey,
+      });
+      setThumbnailUrl(downloadRes.data.download_url);
+    } catch (err) {
+      console.error('Failed to upload thumbnail:', err);
+      // Clear preview on error
+      setThumbnailPreview('');
+      setThumbnailUrl('');
+    } finally {
+      setUploadingThumbnail(false);
+    }
+  };
+
+  const removeThumbnail = () => {
+    setThumbnailUrl('');
+    setThumbnailPreview('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
   const addEntry = () => {
     setEntries((prev) => [...prev, { label: '', points: 0 }]);
@@ -168,6 +222,8 @@ export default function CreateScorecard() {
         setName('');
         setDescription('');
         setThumbnailUrl('');
+        setThumbnailPreview('');
+        if (fileInputRef.current) fileInputRef.current.value = '';
         setEntries([...DEFAULT_ENTRIES]);
         setIncludeMiss(true);
       }
@@ -236,18 +292,58 @@ export default function CreateScorecard() {
               />
             </div>
 
-            {/* Thumbnail URL */}
+            {/* Thumbnail Upload */}
             <div>
               <Label className="text-slate-300 text-sm font-medium mb-1.5 block flex items-center gap-1.5">
                 <Image className="h-4 w-4 text-slate-400" />
-                Thumbnail URL
+                Thumbnail Image
               </Label>
-              <Input
-                value={thumbnailUrl}
-                onChange={(e) => setThumbnailUrl(e.target.value)}
-                placeholder="https://example.com/scoring-zones.jpg"
-                className="bg-slate-900 border-slate-700 text-white placeholder:text-slate-500 h-11"
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleThumbnailUpload}
+                className="hidden"
               />
+              {thumbnailPreview || thumbnailUrl ? (
+                <div className="relative rounded-xl overflow-hidden border border-slate-700/50 bg-slate-900">
+                  <img
+                    src={thumbnailPreview || thumbnailUrl}
+                    alt="Scorecard thumbnail preview"
+                    className="w-full h-40 object-cover"
+                  />
+                  {uploadingThumbnail && (
+                    <div className="absolute inset-0 bg-slate-900/70 flex items-center justify-center">
+                      <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium">
+                        <div className="h-4 w-4 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+                        Uploading...
+                      </div>
+                    </div>
+                  )}
+                  {!uploadingThumbnail && (
+                    <button
+                      type="button"
+                      onClick={removeThumbnail}
+                      className="absolute top-2 right-2 h-8 w-8 flex items-center justify-center rounded-full bg-slate-900/80 border border-slate-600 text-slate-300 hover:text-red-400 hover:border-red-500/50 transition-colors"
+                      aria-label="Remove thumbnail"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full h-32 rounded-xl border-2 border-dashed border-slate-700 bg-slate-900/50 hover:border-emerald-500/50 hover:bg-slate-900 transition-colors flex flex-col items-center justify-center gap-2 group"
+                >
+                  <Upload className="h-8 w-8 text-slate-500 group-hover:text-emerald-400 transition-colors" />
+                  <span className="text-sm text-slate-400 group-hover:text-slate-300 transition-colors">
+                    Click to upload thumbnail
+                  </span>
+                  <span className="text-xs text-slate-600">PNG, JPG, or WebP</span>
+                </button>
+              )}
               <p className="text-xs text-slate-500 mt-1">Optional image showing scoring zones or target layout</p>
             </div>
 
