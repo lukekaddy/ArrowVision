@@ -13,6 +13,7 @@ interface CourseConfig {
 interface Tournament {
   id: number;
   name: string;
+  date: string;
   divisions?: string;
   courses?: string;
 }
@@ -23,6 +24,11 @@ interface LeaderboardEntry {
   division: string;
   total_score: number;
   targets_completed: number;
+}
+
+function isActive(dateStr: string): boolean {
+  const today = new Date().toISOString().split('T')[0];
+  return dateStr === today;
 }
 
 export default function Leaderboard() {
@@ -112,12 +118,30 @@ export default function Leaderboard() {
     return <span className="text-slate-500 font-mono w-5 text-center">{rank}</span>;
   };
 
+  // Separate active and non-active tournaments
+  const activeTournaments = tournaments.filter((t) => isActive(t.date));
+  const otherTournaments = tournaments.filter((t) => !isActive(t.date));
+
   return (
     <Layout>
       <div className="max-w-3xl mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
+        <h1 className="text-3xl font-bold text-white mb-2 flex items-center gap-3">
           <BarChart3 className="h-8 w-8 text-emerald-400" /> Live Leaderboard
         </h1>
+        <p className="text-slate-400 mb-6">Real-time tournament rankings. Select an active tournament to see live scores.</p>
+
+        {/* Active tournaments indicator */}
+        {activeTournaments.length > 0 && (
+          <div className="mb-4 p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+            <p className="text-sm text-emerald-400 font-medium flex items-center gap-2">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              </span>
+              {activeTournaments.length} tournament{activeTournaments.length > 1 ? 's' : ''} currently in progress
+            </p>
+          </div>
+        )}
 
         {/* Filters */}
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
@@ -126,9 +150,40 @@ export default function Leaderboard() {
               <SelectValue placeholder="Select Tournament" />
             </SelectTrigger>
             <SelectContent className="bg-slate-800 border-slate-700">
-              {tournaments.map((t) => (
-                <SelectItem key={t.id} value={t.id.toString()} className="text-white">{t.name}</SelectItem>
-              ))}
+              {activeTournaments.length > 0 && (
+                <>
+                  <div className="px-3 py-1.5 text-xs font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    Active Now
+                  </div>
+                  {activeTournaments.map((t) => (
+                    <SelectItem key={t.id} value={t.id.toString()} className="text-white">
+                      <span className="flex items-center gap-2">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        {t.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </>
+              )}
+              {otherTournaments.length > 0 && (
+                <>
+                  {activeTournaments.length > 0 && (
+                    <div className="px-3 py-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wider mt-1">
+                      Other Tournaments
+                    </div>
+                  )}
+                  {otherTournaments.map((t) => (
+                    <SelectItem key={t.id} value={t.id.toString()} className="text-white">{t.name}</SelectItem>
+                  ))}
+                </>
+              )}
             </SelectContent>
           </Select>
 

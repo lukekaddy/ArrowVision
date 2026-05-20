@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { Menu, X, User, LogOut } from 'lucide-react';
+import { Menu, X, User, LogOut, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const LOGO_URL = 'https://mgx-backend-cdn.metadl.com/generate/images/1230028/2026-05-14/orhciiaaagnq/arrowlive-logo.png';
@@ -11,37 +11,38 @@ interface NavLink {
   label: string;
 }
 
-const ALL_NAV_LINKS: NavLink[] = [
+const MAIN_NAV_LINKS: NavLink[] = [
   { to: '/', label: 'Home' },
-  { to: '/create-tournament', label: 'Create' },
-  { to: '/scorecard', label: 'Scorecard' },
-  { to: '/leaderboard', label: 'Leaderboard' },
-  { to: '/smart-score', label: 'Smart Score' },
+  { to: '/create-tournament', label: 'Create Tournament' },
+  { to: '/create-scorecard', label: 'Create Scorecard' },
+  { to: '/leaderboard', label: 'Live Leaderboard' },
   { to: '/results', label: 'Results' },
+];
+
+const ADMIN_LINKS: NavLink[] = [
+  { to: '/dashboard', label: 'Dashboard' },
+  { to: '/admin/upload-replay', label: 'Upload Replay' },
 ];
 
 function getNavLinksForRole(role: string | null | undefined, isLoggedIn: boolean): NavLink[] {
   if (!isLoggedIn) {
-    // Not logged in: Home, Leaderboard, Results
-    return ALL_NAV_LINKS.filter((l) =>
+    return MAIN_NAV_LINKS.filter((l) =>
       ['/', '/leaderboard', '/results'].includes(l.to)
     );
   }
-  if (role === 'admin') {
-    // Admin: all links
-    return ALL_NAV_LINKS;
-  }
-  // Regular user: no Create
-  return ALL_NAV_LINKS.filter((l) => l.to !== '/create-tournament');
+  // All logged-in users see the main nav links
+  return MAIN_NAV_LINKS;
 }
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [adminMenuOpen, setAdminMenuOpen] = useState(false);
   const { user, login, logout, needsRoleSelection } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
   const navLinks = getNavLinksForRole(user?.role, !!user);
+  const isAdmin = user?.role === 'admin';
 
   // Auto-redirect to role selection if needed
   useEffect(() => {
@@ -49,6 +50,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       navigate('/role-select');
     }
   }, [user, needsRoleSelection, location.pathname, navigate]);
+
+  // Close admin menu on route change
+  useEffect(() => {
+    setAdminMenuOpen(false);
+  }, [location.pathname]);
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#0f172a' }}>
@@ -77,6 +83,40 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 {link.label}
               </Link>
             ))}
+
+            {/* Admin menu */}
+            {isAdmin && (
+              <div className="relative ml-2">
+                <button
+                  onClick={() => setAdminMenuOpen(!adminMenuOpen)}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${
+                    adminMenuOpen || ADMIN_LINKS.some((l) => location.pathname.startsWith(l.to))
+                      ? 'bg-amber-500/20 text-amber-400'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
+                  }`}
+                >
+                  <Settings className="h-4 w-4" />
+                  Admin
+                </button>
+                {adminMenuOpen && (
+                  <div className="absolute top-full right-0 mt-1 w-48 rounded-lg border border-slate-700/50 bg-slate-800 shadow-xl py-1 z-50">
+                    {ADMIN_LINKS.map((link) => (
+                      <Link
+                        key={link.to}
+                        to={link.to}
+                        className={`block px-4 py-2.5 text-sm transition-colors ${
+                          location.pathname.startsWith(link.to)
+                            ? 'text-amber-400 bg-amber-500/10'
+                            : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
+                        }`}
+                      >
+                        {link.label}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </nav>
 
           <div className="flex items-center gap-2">
@@ -131,6 +171,26 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 {link.label}
               </Link>
             ))}
+            {isAdmin && (
+              <>
+                <div className="border-t border-slate-700/50 my-2" />
+                <p className="px-3 py-1 text-xs font-semibold text-amber-400 uppercase tracking-wider">Admin</p>
+                {ADMIN_LINKS.map((link) => (
+                  <Link
+                    key={link.to}
+                    to={link.to}
+                    onClick={() => setMenuOpen(false)}
+                    className={`block px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                      location.pathname.startsWith(link.to)
+                        ? 'bg-amber-500/20 text-amber-400'
+                        : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </>
+            )}
             {user && (
               <button
                 onClick={() => { logout(); setMenuOpen(false); }}
@@ -153,7 +213,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3 text-sm text-slate-500">
           <span>© 2026 BullsEye Labs. Digital archery scoring.</span>
           <div className="flex gap-4">
-            <Link to="/leaderboard" className="hover:text-slate-300 transition-colors">Leaderboard</Link>
+            <Link to="/leaderboard" className="hover:text-slate-300 transition-colors">Live Leaderboard</Link>
             <Link to="/results" className="hover:text-slate-300 transition-colors">Results</Link>
           </div>
         </div>

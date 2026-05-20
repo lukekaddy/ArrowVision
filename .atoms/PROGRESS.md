@@ -16,6 +16,14 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 - [x] Update TournamentCreate flow to navigate to Create Scorecard after creation
 - [x] Update Scorecard page to inherit scoring template from tournament
 - [x] Add routing for Create Scorecard page
+- [x] Restructure main navigation to: Home, Create Tournament, Create Scorecard, Live Leaderboard, Results
+- [x] Redesign Home tab with upcoming tournaments, recent activity, quick-action buttons, active indicators
+- [x] Update Create Scorecard to show previously created scorecards section
+- [x] Update Create Tournament with scorecard dropdown + preview
+- [x] Redesign Live Leaderboard with active tournament indicators
+- [x] Build Results page with tournament search and scorecard search sections (with archer name filter)
+- [x] Add expandable inline archer score details in Results
+- [x] Remove Scorecard and Smart Score from main navigation
 - [x] Create custom backend API for cross-user operations (leaderboard, public tournaments, register, score submission)
 - [x] Generate project images (hero banner, target, logo, tournament scene)
 - [x] Build shared components (Layout, Header, AuthProvider)

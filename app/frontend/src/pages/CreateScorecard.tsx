@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
@@ -6,12 +6,20 @@ import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ClipboardList, Check, Plus, X } from 'lucide-react';
+import { ClipboardList, Check, Plus, X, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface ScoreTemplate {
   name: string;
   values: number[];
   description: string;
+}
+
+interface SavedScorecard {
+  id: number;
+  template_name: string;
+  score_values: number[];
+  is_custom: boolean;
+  tournament_id?: number;
 }
 
 const PRESET_TEMPLATES: ScoreTemplate[] = [
@@ -39,6 +47,32 @@ export default function CreateScorecard() {
   const [customName, setCustomName] = useState('');
   const [customValues, setCustomValues] = useState<number[]>([10, 8, 5, 0]);
   const [newValue, setNewValue] = useState('');
+  const [savedScorecards, setSavedScorecards] = useState<SavedScorecard[]>([]);
+  const [loadingSaved, setLoadingSaved] = useState(false);
+  const [showSaved, setShowSaved] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      fetchSavedScorecards();
+    }
+  }, [user]);
+
+  const fetchSavedScorecards = async () => {
+    setLoadingSaved(true);
+    try {
+      const res = await client.apiCall.invoke({
+        url: '/api/v1/tournament/scoring-templates',
+        method: 'GET',
+        data: {},
+      });
+      const items = res?.data?.items || res?.data || [];
+      setSavedScorecards(Array.isArray(items) ? items : []);
+    } catch {
+      setSavedScorecards([]);
+    } finally {
+      setLoadingSaved(false);
+    }
+  };
 
   if (!user) {
     return (
@@ -49,21 +83,6 @@ export default function CreateScorecard() {
           <p className="text-slate-400 mb-6">You need to sign in to create a scorecard template.</p>
           <Button onClick={login} className="bg-emerald-500 hover:bg-emerald-600 text-white">
             Sign In
-          </Button>
-        </div>
-      </Layout>
-    );
-  }
-
-  if (!tournamentId) {
-    return (
-      <Layout>
-        <div className="max-w-md mx-auto px-4 py-20 text-center">
-          <ClipboardList className="h-16 w-16 text-slate-600 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-white mb-3">No Tournament Selected</h2>
-          <p className="text-slate-400 mb-6">Please create a tournament first.</p>
-          <Button onClick={() => navigate('/create-tournament')} className="bg-emerald-500 hover:bg-emerald-600 text-white">
-            Create Tournament
           </Button>
         </div>
       </Layout>
@@ -103,16 +122,26 @@ export default function CreateScorecard() {
 
     setSaving(true);
     try {
-      await client.callApi('/api/v1/tournament/create-scorecard', {
+      await client.apiCall.invoke({
+        url: '/api/v1/tournament/create-scorecard',
         method: 'POST',
-        body: JSON.stringify({
-          tournament_id: parseInt(tournamentId),
+        data: {
+          tournament_id: tournamentId ? parseInt(tournamentId) : undefined,
           template_name: data.name,
           score_values: data.values,
           is_custom: data.isCustom,
-        }),
+        },
       });
-      navigate(`/dashboard/${tournamentId}`);
+      if (tournamentId) {
+        navigate(`/dashboard/${tournamentId}`);
+      } else {
+        // Refresh saved list and reset form
+        await fetchSavedScorecards();
+        setSelectedTemplate(null);
+        setCustomName('');
+        setCustomValues([10, 8, 5, 0]);
+        setShowSaved(true);
+      }
     } catch (err) {
       console.error('Failed to create scorecard template:', err);
     } finally {
@@ -128,7 +157,7 @@ export default function CreateScorecard() {
           Create Scorecard
         </h1>
         <p className="text-slate-400 mb-8">
-          Choose a scoring template for your tournament. This determines the score values archers can enter.
+          Choose a scoring template{tournamentId ? ' for your tournament' : ''}. This determines the score values archers can enter.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -264,15 +293,79 @@ export default function CreateScorecard() {
             {saving ? 'Saving...' : 'Save Scorecard Template'}
           </Button>
 
-          {/* Skip option */}
+          {/* Skip option (only if coming from tournament creation) */}
+          {tournamentId && (
+            <button
+              type="button"
+              onClick={() => navigate(`/dashboard/${tournamentId}`)}
+              className="w-full text-center text-sm text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              Skip for now — I'll set this up later
+            </button>
+          )}
+        </form>
+
+        {/* Previously Created Scorecards */}
+        <div className="mt-10 border-t border-slate-700/50 pt-8">
           <button
             type="button"
-            onClick={() => navigate(`/dashboard/${tournamentId}`)}
-            className="w-full text-center text-sm text-slate-500 hover:text-slate-300 transition-colors"
+            onClick={() => setShowSaved(!showSaved)}
+            className="w-full flex items-center justify-between text-left"
           >
-            Skip for now — I'll set this up later
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <ClipboardList className="h-5 w-5 text-slate-400" />
+              Previously Created Scorecards
+              {savedScorecards.length > 0 && (
+                <span className="text-sm font-normal text-slate-500">({savedScorecards.length})</span>
+              )}
+            </h2>
+            {showSaved ? (
+              <ChevronUp className="h-5 w-5 text-slate-400" />
+            ) : (
+              <ChevronDown className="h-5 w-5 text-slate-400" />
+            )}
           </button>
-        </form>
+
+          {showSaved && (
+            <div className="mt-4 space-y-3">
+              {loadingSaved ? (
+                <div className="space-y-3">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="h-16 bg-slate-800/50 rounded-xl animate-pulse" />
+                  ))}
+                </div>
+              ) : savedScorecards.length === 0 ? (
+                <div className="text-center py-8 rounded-xl border border-slate-700/30 bg-slate-800/30">
+                  <p className="text-slate-400">No scorecards created yet.</p>
+                </div>
+              ) : (
+                savedScorecards.map((sc) => (
+                  <div
+                    key={sc.id}
+                    className="p-4 rounded-xl border border-slate-700/50 bg-slate-800/50"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-white font-medium">{sc.template_name}</h3>
+                      {sc.is_custom && (
+                        <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-400">Custom</span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(sc.score_values || []).map((val) => (
+                        <span
+                          key={val}
+                          className="px-2 py-0.5 rounded text-xs font-bold bg-slate-700 text-slate-300"
+                        >
+                          {val === 0 ? 'Miss' : val}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </Layout>
   );

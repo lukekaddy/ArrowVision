@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
@@ -6,7 +6,8 @@ import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Trophy, Plus, X, Check, MapPin } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Trophy, Plus, X, Check, MapPin, Eye, ExternalLink } from 'lucide-react';
 
 const DIVISION_OPTIONS = [
   'Recurve',
@@ -38,6 +39,13 @@ interface MulliganConfig {
   types: MulliganType[];
 }
 
+interface SavedScorecard {
+  id: number;
+  template_name: string;
+  score_values: number[];
+  is_custom: boolean;
+}
+
 export default function TournamentCreate() {
   const { user, login } = useAuth();
   const navigate = useNavigate();
@@ -50,6 +58,11 @@ export default function TournamentCreate() {
   const [customDivision, setCustomDivision] = useState('');
   const [courses, setCourses] = useState<CourseConfig[]>([{ course: 1, name: '', targets: 10 }]);
 
+  // Scorecard selection
+  const [savedScorecards, setSavedScorecards] = useState<SavedScorecard[]>([]);
+  const [selectedScorecardId, setSelectedScorecardId] = useState<string>('');
+  const [showPreview, setShowPreview] = useState(false);
+
   // Mulligan state
   const [mulligansEnabled, setMulligansEnabled] = useState(false);
   const [selectedMulliganTypes, setSelectedMulliganTypes] = useState<string[]>([]);
@@ -57,6 +70,28 @@ export default function TournamentCreate() {
   const [mulliganMaxAllowed, setMulliganMaxAllowed] = useState<Record<string, number>>({});
   const [mulliganRestricted, setMulliganRestricted] = useState<Record<string, boolean>>({});
   const [mulliganRestrictedTargets, setMulliganRestrictedTargets] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (user) {
+      fetchScorecards();
+    }
+  }, [user]);
+
+  const fetchScorecards = async () => {
+    try {
+      const res = await client.apiCall.invoke({
+        url: '/api/v1/tournament/scoring-templates',
+        method: 'GET',
+        data: {},
+      });
+      const items = res?.data?.items || res?.data || [];
+      setSavedScorecards(Array.isArray(items) ? items : []);
+    } catch {
+      setSavedScorecards([]);
+    }
+  };
+
+  const selectedScorecard = savedScorecards.find((sc) => sc.id.toString() === selectedScorecardId);
 
   if (!user) {
     return (
@@ -158,12 +193,13 @@ export default function TournamentCreate() {
           divisions: selectedDivisions.join(','),
           courses: JSON.stringify(courses),
           mulligans: JSON.stringify(mulliganConfig),
+          scoring_template_id: selectedScorecardId ? parseInt(selectedScorecardId) : undefined,
           status: 'auto',
         },
       });
       const id = res?.data?.id;
       if (id) {
-        navigate(`/create-scorecard?tournament_id=${id}`);
+        navigate(`/dashboard/${id}`);
       } else {
         navigate('/');
       }
@@ -226,6 +262,71 @@ export default function TournamentCreate() {
                   : date > new Date().toISOString().split('T')[0]
                   ? '🔵 Upcoming'
                   : '⚪ Completed'}
+              </p>
+            )}
+          </div>
+
+          {/* Scorecard Selection */}
+          <div>
+            <Label className="text-slate-300 mb-2 block">Scoring Template</Label>
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <Select value={selectedScorecardId} onValueChange={(val) => { setSelectedScorecardId(val); setShowPreview(false); }}>
+                    <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-12">
+                      <SelectValue placeholder="Select a scorecard template..." />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-700">
+                      {savedScorecards.map((sc) => (
+                        <SelectItem key={sc.id} value={sc.id.toString()} className="text-white">
+                          {sc.template_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {selectedScorecardId && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowPreview(!showPreview)}
+                    className="border-slate-600 text-slate-300 hover:bg-slate-700/50 h-12 px-3"
+                  >
+                    <Eye className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+
+              {/* Preview */}
+              {showPreview && selectedScorecard && (
+                <div className="p-4 rounded-lg bg-slate-800/50 border border-emerald-500/30">
+                  <p className="text-sm text-slate-400 mb-2">Score Values:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedScorecard.score_values.map((val) => (
+                      <span
+                        key={val}
+                        className="px-3 py-1.5 rounded-lg text-sm font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40"
+                      >
+                        {val === 0 ? 'Miss' : val}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Create New Scorecard link */}
+              <button
+                type="button"
+                onClick={() => navigate('/create-scorecard')}
+                className="flex items-center gap-2 text-sm text-emerald-400 hover:text-emerald-300 transition-colors"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Create New Scorecard Template
+              </button>
+            </div>
+            {savedScorecards.length === 0 && (
+              <p className="text-xs text-slate-500 mt-2">
+                No scorecards found. Create one first or the default scoring will be used.
               </p>
             )}
           </div>

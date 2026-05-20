@@ -3,14 +3,16 @@ import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Award, Download, Share2, Printer, Trophy, Medal } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Award, Download, Share2, Printer, Trophy, Medal, Search, ChevronDown, ChevronUp, ClipboardList } from 'lucide-react';
 
 interface Tournament {
   id: number;
   name: string;
   date: string;
   status: string;
+  location?: string;
+  divisions?: string;
 }
 
 interface LeaderboardEntry {
@@ -21,35 +23,96 @@ interface LeaderboardEntry {
   targets_completed: number;
 }
 
+interface ScoreDetail {
+  target_number: number;
+  score: number;
+  course_number?: number;
+}
+
+interface SavedScorecard {
+  id: number;
+  template_name: string;
+  score_values: number[];
+  is_custom: boolean;
+}
+
+function inferStatus(dateStr: string): string {
+  const today = new Date().toISOString().split('T')[0];
+  if (dateStr === today) return 'active';
+  if (dateStr > today) return 'upcoming';
+  return 'completed';
+}
+
 export default function Results() {
   const { user } = useAuth();
   const client = getClient();
+
+  // Tournament search state
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
-  const [selectedId, setSelectedId] = useState<string>('');
-  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [tournamentSearch, setTournamentSearch] = useState('');
+  const [archerFilter, setArcherFilter] = useState('');
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
+  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
+  const [loadingEntries, setLoadingEntries] = useState(false);
+  const [expandedArcher, setExpandedArcher] = useState<string | null>(null);
+  const [archerScores, setArcherScores] = useState<Record<string, ScoreDetail[]>>({});
+  const [loadingScores, setLoadingScores] = useState<string | null>(null);
+
+  // Scorecard search state
+  const [scorecards, setScorecards] = useState<SavedScorecard[]>([]);
+  const [scorecardSearch, setScorecardSearch] = useState('');
 
   useEffect(() => {
-    const fetchTournaments = async () => {
-      try {
-        const res = await client.apiCall.invoke({ url: '/api/v1/tournament/public-list', method: 'GET', data: {} });
-        setTournaments(res?.data?.items || []);
-      } catch {
-        setTournaments([]);
-      }
-    };
     fetchTournaments();
+    fetchScorecards();
   }, []);
 
-  const selectTournament = async (id: string) => {
-    setSelectedId(id);
-    const t = tournaments.find((t) => t.id === parseInt(id));
-    setSelectedTournament(t || null);
-    setLoading(true);
+  const fetchTournaments = async () => {
+    try {
+      const res = await client.apiCall.invoke({ url: '/api/v1/tournament/public-list', method: 'GET', data: {} });
+      setTournaments(res?.data?.items || []);
+    } catch {
+      setTournaments([]);
+    }
+  };
+
+  const fetchScorecards = async () => {
     try {
       const res = await client.apiCall.invoke({
-        url: `/api/v1/tournament/leaderboard/${id}`,
+        url: '/api/v1/tournament/scoring-templates',
+        method: 'GET',
+        data: {},
+      });
+      const items = res?.data?.items || res?.data || [];
+      setScorecards(Array.isArray(items) ? items : []);
+    } catch {
+      setScorecards([]);
+    }
+  };
+
+  // Filter completed tournaments
+  const completedTournaments = tournaments.filter((t) => {
+    const status = t.status === 'auto' ? inferStatus(t.date) : t.status;
+    return status === 'completed';
+  });
+
+  const filteredTournaments = completedTournaments.filter((t) => {
+    const matchesName = t.name.toLowerCase().includes(tournamentSearch.toLowerCase());
+    const matchesLocation = t.location?.toLowerCase().includes(tournamentSearch.toLowerCase());
+    return matchesName || matchesLocation;
+  });
+
+  const filteredScorecards = scorecards.filter((sc) =>
+    sc.template_name.toLowerCase().includes(scorecardSearch.toLowerCase())
+  );
+
+  const selectTournament = async (t: Tournament) => {
+    setSelectedTournament(t);
+    setExpandedArcher(null);
+    setLoadingEntries(true);
+    try {
+      const res = await client.apiCall.invoke({
+        url: `/api/v1/tournament/leaderboard/${t.id}`,
         method: 'GET',
         data: {},
       });
@@ -57,15 +120,48 @@ export default function Results() {
     } catch {
       setEntries([]);
     } finally {
-      setLoading(false);
+      setLoadingEntries(false);
     }
   };
 
+  const toggleArcherDetails = async (archerName: string) => {
+    if (expandedArcher === archerName) {
+      setExpandedArcher(null);
+      return;
+    }
+    setExpandedArcher(archerName);
+
+    // Fetch detailed scores if not cached
+    if (!archerScores[archerName] && selectedTournament) {
+      setLoadingScores(archerName);
+      try {
+        const res = await client.apiCall.invoke({
+          url: `/api/v1/tournament/scores`,
+          method: 'GET',
+          data: {
+            tournament_id: selectedTournament.id.toString(),
+            archer_name: archerName,
+          },
+        });
+        const scores = res?.data?.items || res?.data || [];
+        setArcherScores((prev) => ({ ...prev, [archerName]: scores }));
+      } catch {
+        setArcherScores((prev) => ({ ...prev, [archerName]: [] }));
+      } finally {
+        setLoadingScores(null);
+      }
+    }
+  };
+
+  const filteredEntries = archerFilter
+    ? entries.filter((e) => e.archer_name.toLowerCase().includes(archerFilter.toLowerCase()))
+    : entries;
+
   const exportJSON = async () => {
-    if (!selectedId || !user) return;
+    if (!selectedTournament || !user) return;
     try {
       const res = await client.apiCall.invoke({
-        url: `/api/v1/tournament/export-results/${selectedId}`,
+        url: `/api/v1/tournament/export-results/${selectedTournament.id}`,
         method: 'POST',
         data: {},
       });
@@ -73,7 +169,7 @@ export default function Results() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `results-${selectedId}.json`;
+      a.download = `results-${selectedTournament.id}.json`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -84,11 +180,11 @@ export default function Results() {
   const handlePrint = () => window.print();
 
   const handleShare = async () => {
-    if (navigator.share) {
+    if (navigator.share && selectedTournament) {
       try {
         await navigator.share({
-          title: `${selectedTournament?.name} Results`,
-          text: `Check out the results for ${selectedTournament?.name}!`,
+          title: `${selectedTournament.name} Results`,
+          text: `Check out the results for ${selectedTournament.name}!`,
           url: window.location.href,
         });
       } catch {
@@ -106,94 +202,238 @@ export default function Results() {
 
   return (
     <Layout>
-      <div className="max-w-3xl mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
-          <Award className="h-8 w-8 text-amber-400" /> Tournament Results
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold text-white mb-2 flex items-center gap-3">
+          <Award className="h-8 w-8 text-amber-400" /> Results
         </h1>
+        <p className="text-slate-400 mb-8">Search completed tournaments and scorecards.</p>
 
-        <div className="flex flex-col sm:flex-row gap-3 mb-6">
-          <Select onValueChange={selectTournament}>
-            <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-12 flex-1">
-              <SelectValue placeholder="Select Tournament" />
-            </SelectTrigger>
-            <SelectContent className="bg-slate-800 border-slate-700">
-              {tournaments.map((t) => (
-                <SelectItem key={t.id} value={t.id.toString()} className="text-white">{t.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        {/* Section 1: Search Tournaments */}
+        <section className="mb-10">
+          <div className="rounded-xl border border-slate-700/50 bg-slate-800/30 overflow-hidden">
+            <div className="p-5 border-b border-slate-700/50">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-4">
+                <Trophy className="h-5 w-5 text-emerald-400" />
+                Search Tournaments
+              </h2>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                  <Input
+                    value={tournamentSearch}
+                    onChange={(e) => setTournamentSearch(e.target.value)}
+                    placeholder="Search by name or location..."
+                    className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 pl-10 h-11"
+                  />
+                </div>
+              </div>
+            </div>
 
-          {selectedId && (
-            <div className="flex gap-2">
-              <Button onClick={handleShare} variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700/50">
-                <Share2 className="h-4 w-4" />
-              </Button>
-              <Button onClick={handlePrint} variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700/50">
-                <Printer className="h-4 w-4" />
-              </Button>
-              {user && (
-                <Button onClick={exportJSON} variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700/50 gap-1">
-                  <Download className="h-4 w-4" /> JSON
-                </Button>
+            <div className="p-5">
+              {filteredTournaments.length === 0 ? (
+                <div className="text-center py-8">
+                  <Award className="h-10 w-10 text-slate-600 mx-auto mb-2" />
+                  <p className="text-slate-400 text-sm">
+                    {completedTournaments.length === 0
+                      ? 'No completed tournaments yet.'
+                      : 'No tournaments match your search.'}
+                  </p>
+                </div>
+              ) : !selectedTournament ? (
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {filteredTournaments.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => selectTournament(t)}
+                      className="w-full text-left p-4 rounded-lg border border-slate-700/50 bg-slate-800/50 hover:bg-slate-800 hover:border-slate-600 transition-all"
+                    >
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-white font-medium">{t.name}</h3>
+                        <span className="text-xs text-slate-500">{t.date}</span>
+                      </div>
+                      {t.location && (
+                        <p className="text-sm text-slate-400 mt-0.5">{t.location}</p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div>
+                  {/* Selected tournament header */}
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h3 className="text-lg font-bold text-white">{selectedTournament.name}</h3>
+                      <p className="text-sm text-slate-400">
+                        {selectedTournament.date}
+                        {selectedTournament.location && ` · ${selectedTournament.location}`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        onClick={() => { setSelectedTournament(null); setEntries([]); setArcherFilter(''); }}
+                        variant="outline"
+                        size="sm"
+                        className="border-slate-600 text-slate-300 hover:bg-slate-700/50"
+                      >
+                        Back
+                      </Button>
+                      <Button onClick={handleShare} variant="outline" size="sm" className="border-slate-600 text-slate-300 hover:bg-slate-700/50">
+                        <Share2 className="h-4 w-4" />
+                      </Button>
+                      <Button onClick={handlePrint} variant="outline" size="sm" className="border-slate-600 text-slate-300 hover:bg-slate-700/50">
+                        <Printer className="h-4 w-4" />
+                      </Button>
+                      {user && (
+                        <Button onClick={exportJSON} variant="outline" size="sm" className="border-slate-600 text-slate-300 hover:bg-slate-700/50 gap-1">
+                          <Download className="h-4 w-4" /> JSON
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Archer name filter */}
+                  <div className="relative mb-4">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                    <Input
+                      value={archerFilter}
+                      onChange={(e) => setArcherFilter(e.target.value)}
+                      placeholder="Filter by archer name..."
+                      className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 pl-10 h-10"
+                    />
+                  </div>
+
+                  {/* Results table */}
+                  {loadingEntries ? (
+                    <div className="space-y-3">
+                      {[1, 2, 3].map((i) => (
+                        <div key={i} className="h-14 bg-slate-800 rounded-lg animate-pulse" />
+                      ))}
+                    </div>
+                  ) : filteredEntries.length > 0 ? (
+                    <div className="space-y-1">
+                      {filteredEntries.map((e) => (
+                        <div key={`${e.archer_name}-${e.rank}`}>
+                          <button
+                            onClick={() => toggleArcherDetails(e.archer_name)}
+                            className={`w-full text-left p-3 rounded-lg border transition-all flex items-center gap-3 ${
+                              expandedArcher === e.archer_name
+                                ? 'bg-slate-800 border-emerald-500/30'
+                                : 'border-slate-700/30 hover:bg-slate-800/80'
+                            }`}
+                          >
+                            <div className="w-8 flex justify-center">{getRankDisplay(e.rank)}</div>
+                            <div className="flex-1 min-w-0">
+                              <span className="text-white font-medium">{e.archer_name}</span>
+                              {e.division && <span className="text-xs text-slate-500 ml-2">{e.division}</span>}
+                            </div>
+                            <span className="text-lg font-bold text-emerald-400 mr-2">{e.total_score}</span>
+                            {expandedArcher === e.archer_name ? (
+                              <ChevronUp className="h-4 w-4 text-slate-400" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4 text-slate-400" />
+                            )}
+                          </button>
+
+                          {/* Expanded score details */}
+                          {expandedArcher === e.archer_name && (
+                            <div className="ml-11 mr-2 mt-1 mb-2 p-3 rounded-lg bg-slate-900/50 border border-slate-700/30">
+                              {loadingScores === e.archer_name ? (
+                                <div className="h-8 bg-slate-800 rounded animate-pulse" />
+                              ) : (archerScores[e.archer_name] || []).length > 0 ? (
+                                <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
+                                  {(archerScores[e.archer_name] || [])
+                                    .sort((a, b) => a.target_number - b.target_number)
+                                    .map((s) => (
+                                      <div
+                                        key={s.target_number}
+                                        className="text-center p-2 rounded bg-slate-800 border border-slate-700/50"
+                                      >
+                                        <p className="text-xs text-slate-500">T{s.target_number}</p>
+                                        <p className="text-sm font-bold text-white">{s.score}</p>
+                                      </div>
+                                    ))}
+                                </div>
+                              ) : (
+                                <p className="text-sm text-slate-500">No detailed scores available.</p>
+                              )}
+                              <p className="text-xs text-slate-500 mt-2">
+                                {e.targets_completed} targets completed · Total: {e.total_score}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-slate-400 text-sm">No results found.</p>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
-          )}
-        </div>
+          </div>
+        </section>
 
-        {selectedTournament && (
-          <div className="mb-6 p-4 rounded-xl bg-slate-800/50 border border-slate-700/50">
-            <h2 className="text-xl font-bold text-white">{selectedTournament.name}</h2>
-            <p className="text-slate-400 text-sm mt-1">
-              {selectedTournament.date} · Status: {selectedTournament.status}
-            </p>
-          </div>
-        )}
+        {/* Section 2: Search Scorecards */}
+        <section>
+          <div className="rounded-xl border border-slate-700/50 bg-slate-800/30 overflow-hidden">
+            <div className="p-5 border-b border-slate-700/50">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-4">
+                <ClipboardList className="h-5 w-5 text-amber-400" />
+                Search Scorecards
+              </h2>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                <Input
+                  value={scorecardSearch}
+                  onChange={(e) => setScorecardSearch(e.target.value)}
+                  placeholder="Search by scorecard name..."
+                  className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 pl-10 h-11"
+                />
+              </div>
+            </div>
 
-        {loading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-14 bg-slate-800 rounded-lg animate-pulse" />
-            ))}
+            <div className="p-5">
+              {filteredScorecards.length === 0 ? (
+                <div className="text-center py-8">
+                  <ClipboardList className="h-10 w-10 text-slate-600 mx-auto mb-2" />
+                  <p className="text-slate-400 text-sm">
+                    {scorecards.length === 0
+                      ? 'No scorecards created yet.'
+                      : 'No scorecards match your search.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredScorecards.map((sc) => (
+                    <div
+                      key={sc.id}
+                      className="p-4 rounded-lg border border-slate-700/50 bg-slate-800/50"
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-white font-medium">{sc.template_name}</h3>
+                        {sc.is_custom && (
+                          <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-400">Custom</span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(sc.score_values || []).map((val) => (
+                          <span
+                            key={val}
+                            className="px-2.5 py-1 rounded text-xs font-bold bg-slate-700 text-slate-300"
+                          >
+                            {val === 0 ? 'Miss' : val}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        ) : entries.length > 0 ? (
-          <div className="rounded-xl border border-slate-700/50 bg-slate-800/50 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-slate-400 border-b border-slate-700/50 bg-slate-800">
-                  <th className="text-left py-3 px-4 w-16">Rank</th>
-                  <th className="text-left py-3 px-4">Archer</th>
-                  <th className="text-right py-3 px-4">Total Score</th>
-                  <th className="text-right py-3 px-4 hidden sm:table-cell">Targets</th>
-                </tr>
-              </thead>
-              <tbody>
-                {entries.map((e) => (
-                  <tr key={`${e.archer_name}-${e.rank}`} className={`border-b border-slate-700/30 ${e.rank <= 3 ? 'bg-slate-800/80' : ''}`}>
-                    <td className="py-3 px-4">{getRankDisplay(e.rank)}</td>
-                    <td className="py-3 px-4">
-                      <span className="text-white font-medium">{e.archer_name}</span>
-                      {e.division && <span className="text-xs text-slate-500 ml-2">{e.division}</span>}
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <span className="text-lg font-bold text-emerald-400">{e.total_score}</span>
-                    </td>
-                    <td className="py-3 px-4 text-right text-slate-400 hidden sm:table-cell">{e.targets_completed}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : selectedId ? (
-          <div className="text-center py-16 rounded-xl border border-slate-700/30 bg-slate-800/30">
-            <Award className="h-12 w-12 text-slate-600 mx-auto mb-3" />
-            <p className="text-slate-400">No results available for this tournament.</p>
-          </div>
-        ) : (
-          <div className="text-center py-16 rounded-xl border border-slate-700/30 bg-slate-800/30">
-            <Award className="h-12 w-12 text-slate-600 mx-auto mb-3" />
-            <p className="text-slate-400">Select a tournament to view results.</p>
-          </div>
-        )}
+        </section>
       </div>
     </Layout>
   );
