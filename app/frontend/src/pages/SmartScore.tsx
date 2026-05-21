@@ -40,12 +40,24 @@ export default function SmartScore() {
   const [lockedScore] = useState(scoreValues[0] ?? 10);
   const [replayVideoUrl, setReplayVideoUrl] = useState<string | null>(null);
   const [loadingReplay, setLoadingReplay] = useState(false);
+  const [videoPlaybackError, setVideoPlaybackError] = useState(false);
 
   const hasContext = tournamentId && archerId && targetNumber;
 
-  // Fetch replay video from backend
+  // Create a stable key for the current target context to force re-renders
+  const targetKey = `${tournamentId}-${archerId}-${courseNumber}-${targetNumber}`;
+
+  // Fetch replay video from backend - reset state on every param change
   useEffect(() => {
+    // Reset all replay-related state when params change
+    setReplayVideoUrl(null);
+    setVideoPlaybackError(false);
+    setIsPlaying(false);
+    setLoadingReplay(false);
+
     if (!tournamentId || !archerId || !courseNumber || !targetNumber) return;
+
+    let cancelled = false;
 
     const fetchReplay = async () => {
       setLoadingReplay(true);
@@ -61,12 +73,17 @@ export default function SmartScore() {
           },
         });
 
+        if (cancelled) return;
+
         const objectKey = response?.data?.object_key;
         if (objectKey) {
           const downloadRes = await client.storage.getDownloadUrl({
             bucket_name: 'arrow-replays',
             object_key: objectKey,
           });
+
+          if (cancelled) return;
+
           const url = downloadRes?.data?.download_url;
           // Only set the URL if it's a valid non-empty string
           if (url && typeof url === 'string' && url.trim().length > 0) {
@@ -74,13 +91,21 @@ export default function SmartScore() {
           }
         }
       } catch (err) {
-        console.error('Error fetching replay:', err);
+        if (!cancelled) {
+          console.error('Error fetching replay:', err);
+        }
       } finally {
-        setLoadingReplay(false);
+        if (!cancelled) {
+          setLoadingReplay(false);
+        }
       }
     };
 
     fetchReplay();
+
+    return () => {
+      cancelled = true;
+    };
   }, [tournamentId, archerId, courseNumber, targetNumber]);
 
   const toggleVideo = () => {
@@ -232,10 +257,11 @@ export default function SmartScore() {
             <div className="flex items-center justify-center h-48 bg-slate-800/50 rounded-2xl border-2 border-slate-700/50">
               <Loader2 className="h-8 w-8 text-emerald-400 animate-spin" />
             </div>
-          ) : replayVideoUrl && replayVideoUrl.trim().length > 0 ? (
+          ) : replayVideoUrl && replayVideoUrl.trim().length > 0 && !videoPlaybackError ? (
             <>
               <div className="relative rounded-2xl overflow-hidden border-2 border-slate-700/50 bg-black">
                 <video
+                  key={targetKey}
                   ref={videoRef}
                   src={replayVideoUrl}
                   className="w-full aspect-video object-cover"
@@ -245,8 +271,8 @@ export default function SmartScore() {
                   onEnded={() => setIsPlaying(false)}
                   onError={() => {
                     setIsPlaying(false);
-                    // If the video source fails to load, clear the URL to show placeholder
-                    setReplayVideoUrl(null);
+                    // Mark playback error without clearing the URL permanently
+                    setVideoPlaybackError(true);
                   }}
                 />
                 {/* Play/Pause Overlay */}
