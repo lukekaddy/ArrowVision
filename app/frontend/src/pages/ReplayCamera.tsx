@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Video, Mic, MicOff, AlertCircle, CheckCircle, Loader2, Volume2, Crosshair } from 'lucide-react';
+import { toast } from '@/components/ui/sonner';
 
 interface Tournament {
   id: number;
@@ -49,6 +50,7 @@ export default function ReplayCamera() {
   const selectedTournamentRef = useRef<Tournament | null>(null);
   const selectedArcherRef = useRef<Archer | null>(null);
   const selectedCourseRef = useRef<CourseConfig | null>(null);
+  const tokenRef = useRef<string | null>(null);
 
   // State
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>('idle');
@@ -70,6 +72,7 @@ export default function ReplayCamera() {
   useEffect(() => { selectedTournamentRef.current = selectedTournament; }, [selectedTournament]);
   useEffect(() => { selectedArcherRef.current = selectedArcher; }, [selectedArcher]);
   useEffect(() => { selectedCourseRef.current = selectedCourse; }, [selectedCourse]);
+  useEffect(() => { tokenRef.current = token ?? null; }, [token]);
 
   // Fetch tournaments on mount (only if logged in)
   useEffect(() => {
@@ -378,34 +381,74 @@ export default function ReplayCamera() {
     const currentTournament = selectedTournamentRef.current;
     const currentArcher = selectedArcherRef.current;
     const currentCourse = selectedCourseRef.current;
+    const currentToken = tokenRef.current;
     const courseNum = currentCourse?.course || 1;
     const objectKey = `replays/${currentTournament!.id}/${currentArcher!.id}/course${courseNum}_target${currentTarget}.mp4`;
 
-    try {
-      const file = new File([clipBlob], `course${courseNum}_target${currentTarget}.mp4`, { type: clipBlob.type });
+    console.log('[ReplayCamera] Starting upload:', {
+      objectKey,
+      blobSize: clipBlob.size,
+      blobType: clipBlob.type,
+      tournamentId: currentTournament!.id,
+      archerId: currentArcher!.id,
+      courseNum,
+      targetNumber: currentTarget,
+      hasToken: !!currentToken,
+    });
 
-      await client.storage.upload({
+    try {
+      // Step 1: Get a presigned upload URL (same pattern as TournamentCreate)
+      console.log('[ReplayCamera] Step 1: Getting upload URL...');
+      const uploadRes = await client.storage.getUploadUrl({
         bucket_name: 'arrow-replays',
         object_key: objectKey,
-        file: file,
       });
+      const uploadUrl = uploadRes?.data?.upload_url;
+      console.log('[ReplayCamera] Got upload URL:', uploadUrl ? 'yes' : 'NO', uploadUrl?.substring(0, 80));
 
-      // Save metadata
-      await client.apiCall.invoke({
+      if (!uploadUrl) {
+        throw new Error('Failed to get upload URL from storage. Bucket may not exist.');
+      }
+
+      // Step 2: Upload the file directly to the presigned URL
+      console.log('[ReplayCamera] Step 2: Uploading blob via PUT...');
+      const putResponse = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: clipBlob,
+        headers: { 'Content-Type': clipBlob.type || 'video/mp4' },
+      });
+      console.log('[ReplayCamera] PUT response status:', putResponse.status);
+
+      if (!putResponse.ok) {
+        const errText = await putResponse.text().catch(() => '');
+        throw new Error(`Storage PUT failed: ${putResponse.status} ${errText.substring(0, 200)}`);
+      }
+
+      // Step 3: Save metadata to database via custom API
+      console.log('[ReplayCamera] Step 3: Saving metadata to /api/v1/replays/save...');
+      const savePayload = {
+        tournament_id: currentTournament!.id,
+        archer_id: currentArcher!.id,
+        course_number: courseNum,
+        target_number: currentTarget,
+        object_key: objectKey,
+      };
+      console.log('[ReplayCamera] Save payload:', JSON.stringify(savePayload));
+
+      const saveRes = await client.apiCall.invoke({
         url: '/api/v1/replays/save',
         method: 'POST',
-        data: {
-          tournament_id: currentTournament!.id,
-          archer_id: currentArcher!.id,
-          course_number: courseNum,
-          target_number: currentTarget,
-          object_key: objectKey,
-        },
-        ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
+        data: savePayload,
+        ...(currentToken ? { options: { headers: { Authorization: `Bearer ${currentToken}` } } } : {}),
       });
+      console.log('[ReplayCamera] Save response:', JSON.stringify(saveRes?.data));
 
       setRecordingStatus('success');
       setStatusMessage(`✓ Target ${currentTarget} replay saved!`);
+      toast.success(`✓ Target ${currentTarget} replay uploaded`, {
+        description: `${currentArcher?.archer_name || 'Archer'} • Course ${courseNum}`,
+        duration: 4000,
+      });
       setClipCount(prev => prev + 1);
 
       // Auto-increment target
@@ -416,10 +459,15 @@ export default function ReplayCamera() {
 
       setTimeout(() => resetAfterClip(), 2000);
     } catch (err) {
-      console.error('Upload error:', err);
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error('[ReplayCamera] Upload error:', errorMsg, err);
       setRecordingStatus('error');
-      setStatusMessage('Upload failed. Will retry on next trigger.');
-      setTimeout(() => resetAfterClip(), 3000);
+      setStatusMessage(`Upload failed: ${errorMsg.substring(0, 100)}`);
+      toast.error(`✗ Upload failed: Target ${currentTarget}`, {
+        description: errorMsg.substring(0, 120),
+        duration: 6000,
+      });
+      setTimeout(() => resetAfterClip(), 4000);
     }
   };
 

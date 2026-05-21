@@ -12,6 +12,10 @@ export default function SmartScore() {
   const { token } = useAuth();
   const client = getClient();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const tokenRef = useRef<string | null>(token ?? null);
+
+  // Keep tokenRef in sync so async closures always get the latest token
+  useEffect(() => { tokenRef.current = token ?? null; }, [token]);
 
   const tournamentId = searchParams.get('tournamentId');
   const courseNumber = searchParams.get('courseNumber') || '1'; // Default to course 1 if not specified
@@ -90,7 +94,8 @@ export default function SmartScore() {
         const aid = parseInt(archerId);
         const cn = parseInt(courseNumber);
         const tn = parseInt(targetNumber);
-        console.log('[SmartScore] Fetching replay:', { tid, aid, cn, tn, fetchCounter });
+        const currentToken = tokenRef.current;
+        console.log('[SmartScore] Fetching replay:', { tid, aid, cn, tn, fetchCounter, hasToken: !!currentToken });
         const response = await client.apiCall.invoke({
           url: '/api/v1/replays/find',
           method: 'POST',
@@ -100,7 +105,7 @@ export default function SmartScore() {
             course_number: cn,
             target_number: tn,
           },
-          ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
+          ...(currentToken ? { options: { headers: { Authorization: `Bearer ${currentToken}` } } } : {}),
         });
         console.log('[SmartScore] Replay find response:', JSON.stringify(response?.data));
 
@@ -219,11 +224,12 @@ export default function SmartScore() {
       if (courseNumber) {
         payload.course_number = parseInt(courseNumber);
       }
+      const currentToken = tokenRef.current;
       await client.apiCall.invoke({
         url: '/api/v1/tournament/submit-score',
         method: 'POST',
         data: payload,
-        ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
+        ...(currentToken ? { options: { headers: { Authorization: `Bearer ${currentToken}` } } } : {}),
       });
       saveScoreToLocalStorage(scoreValue);
       navigateBackToScorecard();
