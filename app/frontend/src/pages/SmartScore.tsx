@@ -113,11 +113,59 @@ export default function SmartScore() {
         if (objectKey) {
           console.log('[SmartScore] Found object_key:', objectKey);
           // Use the streaming proxy endpoint instead of presigned URL
-          // This ensures correct Content-Type headers and avoids CORS/format issues
           // Append cache-busting timestamp to avoid stale browser cache
           const streamUrl = `/api/v1/replays/stream?bucket_name=arrow-replays&object_key=${encodeURIComponent(objectKey)}&t=${Date.now()}`;
           console.log('[SmartScore] Stream URL:', streamUrl);
-          setReplayVideoUrl(streamUrl);
+
+          // Preflight check: verify the stream URL returns valid video content
+          // before setting it as the video src (avoids silent video element errors)
+          try {
+            console.log('[SmartScore] Preflight HEAD check on stream URL...');
+            const preflight = await fetch(streamUrl, { method: 'HEAD' });
+            console.log('[SmartScore] Preflight response:', {
+              status: preflight.status,
+              statusText: preflight.statusText,
+              contentType: preflight.headers.get('content-type'),
+              contentLength: preflight.headers.get('content-length'),
+            });
+
+            if (!preflight.ok) {
+              console.error(`[SmartScore] Stream preflight failed: HTTP ${preflight.status} ${preflight.statusText}`);
+              if (!cancelled) {
+                setVideoPlaybackError(true);
+              }
+              return;
+            }
+
+            const ct = preflight.headers.get('content-type') || '';
+            if (!ct.startsWith('video/') && !ct.startsWith('application/octet-stream')) {
+              console.error(`[SmartScore] Stream returned non-video content-type: "${ct}"`);
+              // Try a GET with range to inspect actual bytes
+              try {
+                const probe = await fetch(streamUrl, { headers: { Range: 'bytes=0-64' } });
+                const probeText = await probe.text();
+                console.error('[SmartScore] Stream probe body (first 64 bytes):', probeText.slice(0, 200));
+              } catch (probeErr) {
+                console.error('[SmartScore] Stream probe failed:', probeErr);
+              }
+              if (!cancelled) {
+                setVideoPlaybackError(true);
+              }
+              return;
+            }
+
+            // Preflight passed — set the video URL
+            if (!cancelled) {
+              setReplayVideoUrl(streamUrl);
+            }
+          } catch (preflightErr) {
+            console.error('[SmartScore] Preflight fetch error:', preflightErr);
+            // If preflight fails (network error), still try setting the URL
+            // The video element will handle the error via onError
+            if (!cancelled) {
+              setReplayVideoUrl(streamUrl);
+            }
+          }
         } else {
           console.log('[SmartScore] No object_key found in response');
         }
@@ -303,7 +351,18 @@ export default function SmartScore() {
                   onEnded={() => setIsPlaying(false)}
                   onError={(e) => {
                     const videoEl = e.currentTarget;
-                    console.error('[SmartScore] Video playback error:', videoEl.error?.code, videoEl.error?.message);
+                    const err = videoEl.error;
+                    console.error('[SmartScore] Video playback error details:', {
+                      code: err?.code,
+                      message: err?.message,
+                      MEDIA_ERR_ABORTED: err?.code === 1,
+                      MEDIA_ERR_NETWORK: err?.code === 2,
+                      MEDIA_ERR_DECODE: err?.code === 3,
+                      MEDIA_ERR_SRC_NOT_SUPPORTED: err?.code === 4,
+                      currentSrc: videoEl.currentSrc,
+                      networkState: videoEl.networkState,
+                      readyState: videoEl.readyState,
+                    });
                     setIsPlaying(false);
                     setVideoPlaybackError(true);
                   }}

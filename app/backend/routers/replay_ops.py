@@ -191,6 +191,88 @@ async def get_download_url(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.head("/stream")
+async def stream_replay_head(
+    bucket_name: str = Query(...),
+    object_key: str = Query(...),
+):
+    """HEAD request for stream endpoint — returns headers without body.
+    
+    Used by frontend preflight checks to verify the video exists and
+    get content-type before attempting to load the full video.
+    """
+    from fastapi.responses import Response
+    import httpx as httpx_client
+
+    try:
+        service = StorageService()
+
+        # Determine fallback content type from the object key extension
+        fallback_content_type, _ = mimetypes.guess_type(object_key)
+        if not fallback_content_type:
+            if object_key.endswith(".webm"):
+                fallback_content_type = "video/webm"
+            else:
+                fallback_content_type = "video/mp4"
+
+        # Get the download URL from storage service
+        endpoint = f"/api/v1/infra/client/oss/buckets/{bucket_name}/objects/download_url"
+        payload = {
+            "content_type": fallback_content_type,
+            "expires_in": 0,
+            "object_key": object_key,
+        }
+        result = await service._apost_oss_service(endpoint, payload)
+        download_url = result.get("download_url", "")
+
+        if not download_url:
+            logger.error(f"[REPLAY STREAM HEAD] No download URL for bucket={bucket_name} key={object_key}")
+            raise HTTPException(status_code=404, detail="Video not found in storage")
+
+        # Do a HEAD request to the storage URL to get metadata
+        async with httpx_client.AsyncClient(timeout=30.0, follow_redirects=True) as http_client:
+            head_resp = await http_client.head(download_url)
+
+        logger.info(
+            f"[REPLAY STREAM HEAD] Storage HEAD status={head_resp.status_code} "
+            f"content-type={head_resp.headers.get('content-type', 'N/A')} "
+            f"content-length={head_resp.headers.get('content-length', 'N/A')}"
+        )
+
+        if head_resp.status_code >= 400:
+            logger.error(f"[REPLAY STREAM HEAD] Storage returned {head_resp.status_code}")
+            raise HTTPException(status_code=502, detail=f"Storage returned HTTP {head_resp.status_code}")
+
+        # Determine content type
+        content_type = fallback_content_type
+        actual_ct = head_resp.headers.get("content-type", "")
+        if actual_ct:
+            actual_ct_clean = actual_ct.split(";")[0].strip().lower()
+            if actual_ct_clean and actual_ct_clean != "application/octet-stream":
+                content_type = actual_ct_clean
+
+        content_length = head_resp.headers.get("content-length", "0")
+        filename = object_key.split("/")[-1] if "/" in object_key else object_key
+
+        return Response(
+            content=b"",
+            status_code=200,
+            headers={
+                "Content-Type": content_type,
+                "Content-Length": content_length,
+                "Content-Disposition": f'inline; filename="{filename}"',
+                "Accept-Ranges": "bytes",
+                "Access-Control-Allow-Origin": "*",
+            },
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[REPLAY STREAM HEAD] Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/stream")
 async def stream_replay(
     bucket_name: str = Query(...),
@@ -316,6 +398,26 @@ async def stream_replay(
         raise
     except Exception as e:
         logger.error(f"[REPLAY STREAM] Error streaming replay: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/clear-all")
+async def clear_all_replays(
+    db: AsyncSession = Depends(get_db),
+):
+    """Debug: Delete ALL replay_videos records from the database.
+    
+    This is a destructive debug endpoint for clearing stale data.
+    """
+    try:
+        result = await db.execute(text("DELETE FROM replay_videos"))
+        await db.commit()
+        deleted_count = result.rowcount
+        logger.info(f"[REPLAY CLEAR-ALL] Deleted {deleted_count} records from replay_videos")
+        return {"deleted": deleted_count, "message": f"Cleared {deleted_count} replay records"}
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"[REPLAY CLEAR-ALL] Error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
