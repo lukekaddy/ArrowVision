@@ -36,6 +36,8 @@ interface ReplayInfo {
   object_key: string;
 }
 
+type ReplayModalState = 'idle' | 'loading' | 'ready' | 'error';
+
 export default function Scorecard() {
   const { user, login } = useAuth();
   const client = getClient();
@@ -53,6 +55,8 @@ export default function Scorecard() {
   const [replayMap, setReplayMap] = useState<Record<number, string>>({});
   const [replayModalUrl, setReplayModalUrl] = useState<string | null>(null);
   const [replayModalTarget, setReplayModalTarget] = useState<number | null>(null);
+  const [replayModalState, setReplayModalState] = useState<ReplayModalState>('idle');
+  const [replayError, setReplayError] = useState<string | null>(null);
   const restoredFromParams = useRef(false);
 
   const getStorageKey = useCallback(() => {
@@ -113,17 +117,64 @@ export default function Scorecard() {
   const openReplayModal = async (targetNum: number) => {
     const objectKey = replayMap[targetNum];
     if (!objectKey) return;
+
+    setReplayModalTarget(targetNum);
+    setReplayModalState('loading');
+    setReplayError(null);
+    setReplayModalUrl(null);
+
     try {
+      console.log('[Replay] Requesting download URL for object_key:', objectKey);
       const res = await client.storage.getDownloadUrl({
         bucket_name: 'arrow-replays',
         object_key: objectKey,
       });
+      console.log('[Replay] getDownloadUrl response:', JSON.stringify(res));
+
+      // Try multiple possible response structures
+      let url: string | null = null;
       if (res?.data?.download_url) {
-        setReplayModalUrl(res.data.download_url);
-        setReplayModalTarget(targetNum);
+        url = res.data.download_url;
+      } else if (res?.data?.url) {
+        url = res.data.url;
+      } else if (typeof res?.data === 'string' && res.data.startsWith('http')) {
+        url = res.data;
+      } else if (res?.download_url) {
+        url = res.download_url;
       }
-    } catch {
-      // Could not get download URL
+
+      console.log('[Replay] Resolved URL:', url);
+
+      if (url) {
+        setReplayModalUrl(url);
+        setReplayModalState('ready');
+      } else {
+        // Fallback: try using download() which returns the downloadUrl
+        console.log('[Replay] Trying fallback with client.storage.download...');
+        try {
+          const downloadRes = await client.storage.download({
+            bucket_name: 'arrow-replays',
+            object_key: objectKey,
+          });
+          console.log('[Replay] download() response:', JSON.stringify(downloadRes));
+          const fallbackUrl = downloadRes?.data?.download_url || downloadRes?.data?.url || (typeof downloadRes?.data === 'string' ? downloadRes.data : null);
+          if (fallbackUrl) {
+            setReplayModalUrl(fallbackUrl);
+            setReplayModalState('ready');
+          } else {
+            setReplayModalState('error');
+            setReplayError('Could not retrieve replay video URL. The response format was unexpected.');
+          }
+        } catch (fallbackErr) {
+          console.error('[Replay] Fallback download() also failed:', fallbackErr);
+          setReplayModalState('error');
+          setReplayError('Could not retrieve replay video URL.');
+        }
+      }
+    } catch (err) {
+      console.error('[Replay] getDownloadUrl error:', err);
+      setReplayModalState('error');
+      setReplayError('Failed to load replay video. Please try again.');
     }
   };
 
@@ -442,25 +493,49 @@ export default function Scorecard() {
             )}
 
             {/* Replay Modal */}
-            {replayModalUrl && (
+            {(replayModalState === 'loading' || replayModalState === 'ready' || replayModalState === 'error') && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
                 <div className="relative w-full max-w-lg bg-slate-900 rounded-2xl border border-slate-700 overflow-hidden">
                   <div className="flex items-center justify-between p-4 border-b border-slate-700">
                     <h3 className="text-white font-semibold">Target {replayModalTarget} Replay</h3>
                     <button
-                      onClick={() => { setReplayModalUrl(null); setReplayModalTarget(null); }}
+                      onClick={() => { setReplayModalUrl(null); setReplayModalTarget(null); setReplayModalState('idle'); setReplayError(null); }}
                       className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center hover:bg-slate-700 transition-colors"
                     >
                       <X className="h-4 w-4 text-slate-300" />
                     </button>
                   </div>
                   <div className="p-4">
-                    <video
-                      src={replayModalUrl}
-                      controls
-                      autoPlay
-                      className="w-full rounded-lg"
-                    />
+                    {replayModalState === 'loading' && (
+                      <div className="flex flex-col items-center justify-center py-12">
+                        <div className="w-10 h-10 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin mb-4" />
+                        <p className="text-slate-400 text-sm">Loading replay...</p>
+                      </div>
+                    )}
+                    {replayModalState === 'error' && (
+                      <div className="flex flex-col items-center justify-center py-12">
+                        <X className="h-10 w-10 text-red-400 mb-4" />
+                        <p className="text-red-400 text-sm text-center">{replayError || 'Failed to load replay.'}</p>
+                      </div>
+                    )}
+                    {replayModalState === 'ready' && replayModalUrl && (
+                      <video
+                        src={replayModalUrl}
+                        controls
+                        autoPlay
+                        playsInline
+                        preload="auto"
+                        crossOrigin="anonymous"
+                        className="w-full rounded-lg"
+                        onError={(e) => {
+                          const videoEl = e.currentTarget;
+                          const mediaError = videoEl.error;
+                          console.error('[Replay] Video playback error:', mediaError?.code, mediaError?.message);
+                          setReplayModalState('error');
+                          setReplayError(`Video playback failed (code ${mediaError?.code || 'unknown'}). The clip may still be processing.`);
+                        }}
+                      />
+                    )}
                   </div>
                 </div>
               </div>
