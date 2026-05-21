@@ -5,8 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
-from dependencies.auth import get_current_user
-from schemas.auth import UserResponse
+from routers.custom_auth import get_current_custom_user, UserInfo
 from services.replay_ops import ReplayOpsService
 
 logger = logging.getLogger(__name__)
@@ -36,7 +35,7 @@ class ReplayResponse(BaseModel):
 @router.post("/save")
 async def save_replay(
     data: SaveReplayRequest,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_custom_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Save replay video metadata after upload."""
@@ -65,7 +64,7 @@ async def save_replay(
 @router.post("/find", response_model=ReplayResponse)
 async def find_replay(
     data: FindReplayRequest,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_custom_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Find replay video object_key for a specific archer/target (POST version)."""
@@ -94,7 +93,7 @@ async def get_replay(
     archer_id: int = Query(...),
     course_number: int = Query(...),
     target_number: int = Query(...),
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_custom_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get replay video object_key for a specific archer/target."""

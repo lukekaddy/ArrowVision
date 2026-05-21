@@ -56,7 +56,7 @@ const DEFAULT_ENTRIES: ScoreEntry[] = [
 ];
 
 export default function CreateScorecard() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const navigate = useNavigate();
   const navigateToLogin = () => navigate('/landing');
   const [searchParams] = useSearchParams();
@@ -98,6 +98,7 @@ export default function CreateScorecard() {
         url: '/api/v1/tournament/scoring-templates',
         method: 'GET',
         data: {},
+        ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
       });
       const items = res?.data?.items || res?.data || [];
       setSavedScorecards(Array.isArray(items) ? items : []);
@@ -253,6 +254,7 @@ export default function CreateScorecard() {
             score_values: scoreValues,
             is_custom: true,
           },
+          ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
         });
       } else {
         // Create new scorecard
@@ -265,6 +267,7 @@ export default function CreateScorecard() {
             score_values: scoreValues,
             is_custom: true,
           },
+          ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
         });
       }
 
@@ -289,6 +292,7 @@ export default function CreateScorecard() {
         url: `/api/v1/tournament/delete-scorecard/${id}`,
         method: 'DELETE',
         data: {},
+        ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
       });
       // If we were editing this one, reset the form
       if (editingId === id) {

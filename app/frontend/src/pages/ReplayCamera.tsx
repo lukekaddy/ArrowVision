@@ -29,7 +29,7 @@ type CameraStatus = 'idle' | 'requesting' | 'active' | 'error';
 type RecordingStatus = 'idle' | 'listening' | 'triggered' | 'uploading' | 'success' | 'error';
 
 export default function ReplayCamera() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const client = getClient();
 
   // Refs
@@ -381,6 +381,7 @@ export default function ReplayCamera() {
           target_number: targetNumber,
           object_key: objectKey,
         },
+        ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
       });
 
       setRecordingStatus('success');
