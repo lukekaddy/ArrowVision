@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
+import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Crosshair, ArrowLeft, Play, Edit3, Lock, Loader2, VideoOff } from 'lucide-react';
@@ -8,6 +9,7 @@ import { Crosshair, ArrowLeft, Play, Edit3, Lock, Loader2, VideoOff } from 'luci
 export default function SmartScore() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { token } = useAuth();
   const client = getClient();
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -98,6 +100,7 @@ export default function SmartScore() {
             course_number: cn,
             target_number: tn,
           },
+          ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
         });
         console.log('[SmartScore] Replay find response:', JSON.stringify(response?.data));
 
@@ -220,6 +223,7 @@ export default function SmartScore() {
         url: '/api/v1/tournament/submit-score',
         method: 'POST',
         data: payload,
+        ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
       });
       saveScoreToLocalStorage(scoreValue);
       navigateBackToScorecard();
