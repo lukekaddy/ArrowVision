@@ -400,18 +400,40 @@ export default function Results() {
                   <ClipboardList className="h-10 w-10 text-slate-600 mx-auto mb-2" />
                   <p className="text-slate-400 text-sm">
                     {scorecards.length === 0
-                      ? 'No scorecards created yet.'
+                      ? (!user ? 'Sign in to view your scorecards.' : 'No scorecards created yet.')
                       : 'No scorecards match your search.'}
                   </p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {filteredScorecards.map((sc) => {
-                    const scoreValues: number[] = typeof sc.score_values === 'string'
-                      ? JSON.parse(sc.score_values)
-                      : Array.isArray(sc.score_values)
-                        ? sc.score_values
-                        : [];
+                    let scoreValues: number[] = [];
+                    try {
+                      if (Array.isArray(sc.score_values)) {
+                        scoreValues = sc.score_values.map(Number);
+                      } else if (typeof sc.score_values === 'string') {
+                        let parsed: unknown = sc.score_values;
+                        // Handle double-encoded strings (e.g., "\"[10, 8, 5, 0]\"")
+                        if (typeof parsed === 'string') {
+                          parsed = JSON.parse(parsed);
+                        }
+                        // If still a string after first parse, try again (double-encoded)
+                        if (typeof parsed === 'string') {
+                          parsed = JSON.parse(parsed);
+                        }
+                        if (Array.isArray(parsed)) {
+                          scoreValues = parsed.map(Number);
+                        }
+                      } else if (typeof sc.score_values === 'object' && sc.score_values !== null) {
+                        // Handle unexpected object format
+                        scoreValues = Object.values(sc.score_values).map(Number);
+                      }
+                    } catch {
+                      scoreValues = [];
+                    }
+                    // Filter out NaN values
+                    scoreValues = scoreValues.filter((v) => !isNaN(v));
+
                     return (
                       <div
                         key={sc.id}
@@ -423,16 +445,20 @@ export default function Results() {
                             <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-400">Custom</span>
                           )}
                         </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {scoreValues.map((val) => (
-                            <span
-                              key={val}
-                              className="px-2.5 py-1 rounded text-xs font-bold bg-slate-700 text-slate-300"
-                            >
-                              {val === 0 ? 'Miss' : val}
-                            </span>
-                          ))}
-                        </div>
+                        {scoreValues.length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {scoreValues.map((val, idx) => (
+                              <span
+                                key={idx}
+                                className="px-2.5 py-1 rounded text-xs font-bold bg-slate-700 text-slate-300"
+                              >
+                                {val === 0 ? 'Miss' : val}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-500">No score values defined.</p>
+                        )}
                       </div>
                     );
                   })}
