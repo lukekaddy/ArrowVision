@@ -58,6 +58,7 @@ class UpdateScoreRequest(BaseModel):
 
 # ---------- Public Routes (no auth) ----------
 @router.get("/public-list")
+@router.get("/public-tournaments")
 async def get_public_tournaments(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
