@@ -10,6 +10,44 @@ class ReplayOpsService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def get_existing_object_key(
+        self,
+        tournament_id: int,
+        archer_id: int,
+        course_number: int,
+        target_number: int,
+    ) -> Optional[str]:
+        """Get the existing object_key for a replay (if any), for deletion before re-upload."""
+        query = text(
+            "SELECT object_key FROM replay_videos "
+            "WHERE tournament_id = :tournament_id AND archer_id = :archer_id "
+            "AND course_number = :course_number AND target_number = :target_number "
+            "ORDER BY updated_at DESC LIMIT 1"
+        )
+        result = await self.db.execute(
+            query,
+            {
+                "tournament_id": tournament_id,
+                "archer_id": archer_id,
+                "course_number": course_number,
+                "target_number": target_number,
+            },
+        )
+        row = result.fetchone()
+        if row:
+            logger.info(
+                f"[REPLAY_OPS] get_existing_object_key: found existing key={row[0]} "
+                f"for tournament={tournament_id} archer={archer_id} "
+                f"course={course_number} target={target_number}"
+            )
+            return row[0]
+        logger.info(
+            f"[REPLAY_OPS] get_existing_object_key: no existing record for "
+            f"tournament={tournament_id} archer={archer_id} "
+            f"course={course_number} target={target_number}"
+        )
+        return None
+
     async def save_replay(
         self,
         user_id: str,

@@ -384,7 +384,9 @@ export default function ReplayCamera() {
     const currentToken = tokenRef.current;
     const courseNum = currentCourse?.course || 1;
     const ext = clipBlob.type.includes('webm') ? 'webm' : 'mp4';
-    const objectKey = `replays/${currentTournament!.id}/${currentArcher!.id}/course${courseNum}_target${currentTarget}.${ext}`;
+    // Include timestamp in object key to avoid CDN/cache issues on re-upload
+    const timestamp = Date.now();
+    const objectKey = `replays/${currentTournament!.id}/${currentArcher!.id}/course${courseNum}_target${currentTarget}_${timestamp}.${ext}`;
 
     console.log('[ReplayCamera] Starting upload:', {
       objectKey,
@@ -395,6 +397,7 @@ export default function ReplayCamera() {
       courseNum,
       targetNumber: currentTarget,
       hasToken: !!currentToken,
+      timestamp,
     });
 
     try {
@@ -414,7 +417,7 @@ export default function ReplayCamera() {
       }
 
       // Step 2: Upload the file directly to the presigned URL
-      console.log('[ReplayCamera] Step 2: Uploading blob via PUT...');
+      console.log('[ReplayCamera] Step 2: Uploading blob via PUT...', { size: clipBlob.size });
       const putResponse = await fetch(uploadUrl, {
         method: 'PUT',
         body: clipBlob,
@@ -428,6 +431,7 @@ export default function ReplayCamera() {
       }
 
       // Step 3: Save metadata to database via custom API
+      // The backend /save endpoint will delete the old storage file if the key changed
       console.log('[ReplayCamera] Step 3: Saving metadata to /api/v1/replays/save...');
       const savePayload = {
         tournament_id: currentTournament!.id,
@@ -445,6 +449,13 @@ export default function ReplayCamera() {
         ...(currentToken ? { options: { headers: { Authorization: `Bearer ${currentToken}` } } } : {}),
       });
       console.log('[ReplayCamera] Save response:', JSON.stringify(saveRes?.data));
+
+      if (!saveRes?.data?.id && !saveRes?.data?.object_key) {
+        console.warn('[ReplayCamera] Save response missing expected fields:', saveRes?.data);
+      }
+
+      // Small delay to ensure backend has fully committed before showing success
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       setRecordingStatus('success');
       setStatusMessage(`✓ Target ${currentTarget} replay saved!`);

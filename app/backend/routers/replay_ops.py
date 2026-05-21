@@ -11,6 +11,7 @@ from core.database import get_db
 from routers.custom_auth import get_current_custom_user, UserInfo
 from services.replay_ops import ReplayOpsService
 from services.storage import StorageService
+from schemas.storage import ObjectRequest
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,11 @@ async def save_replay(
     current_user: UserInfo = Depends(get_current_custom_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Save replay video metadata after upload."""
+    """Save replay video metadata after upload.
+    
+    If a previous replay exists for the same target, deletes the old storage
+    object (if the key changed) before updating the DB record.
+    """
     service = ReplayOpsService(db)
     try:
         logger.info(
@@ -65,6 +70,43 @@ async def save_replay(
             f"archer={data.archer_id} course={data.course_number} "
             f"target={data.target_number} key={data.object_key}"
         )
+
+        # Step 1: Check if there's an existing object_key for this target
+        old_object_key = await service.get_existing_object_key(
+            tournament_id=data.tournament_id,
+            archer_id=data.archer_id,
+            course_number=data.course_number,
+            target_number=data.target_number,
+        )
+
+        # Step 2: If old key differs from new key, delete old file from storage
+        if old_object_key and old_object_key != data.object_key:
+            logger.info(
+                f"[REPLAY SAVE] Deleting old storage object: {old_object_key} "
+                f"(replacing with {data.object_key})"
+            )
+            try:
+                storage_service = StorageService()
+                delete_request = ObjectRequest(
+                    bucket_name="arrow-replays",
+                    object_key=old_object_key,
+                )
+                await storage_service.delete_object(delete_request)
+                logger.info(f"[REPLAY SAVE] Successfully deleted old object: {old_object_key}")
+            except Exception as del_err:
+                # Don't fail the whole upload if old file deletion fails
+                logger.warning(
+                    f"[REPLAY SAVE] Failed to delete old object {old_object_key}: {del_err}. "
+                    f"Continuing with save..."
+                )
+        elif old_object_key:
+            logger.info(
+                f"[REPLAY SAVE] Same object_key as existing ({old_object_key}), "
+                f"storage file was already overwritten by presigned URL PUT."
+            )
+
+        # Step 3: Save/update the DB record
+        logger.info(f"[REPLAY SAVE] Upserting DB record with new key: {data.object_key}")
         result = await service.save_replay(
             user_id=str(current_user.id),
             tournament_id=data.tournament_id,
@@ -73,7 +115,7 @@ async def save_replay(
             target_number=data.target_number,
             object_key=data.object_key,
         )
-        logger.info(f"[REPLAY SAVE] result={result}")
+        logger.info(f"[REPLAY SAVE] DB upsert result={result}")
         return result
     except Exception as e:
         logger.error(f"Error saving replay: {e}", exc_info=True)
