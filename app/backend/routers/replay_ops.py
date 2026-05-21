@@ -201,6 +201,7 @@ async def stream_replay(
     - Fetches the video from object storage using server-side credentials
     - Streams it back with correct Content-Type headers
     - Handles both .mp4 and .webm files correctly
+    - Uses a SINGLE GET request (no HEAD) to avoid presigned URL invalidation
     - Supports basic Range requests for video seeking
     """
     from fastapi.responses import StreamingResponse
@@ -209,7 +210,7 @@ async def stream_replay(
     try:
         service = StorageService()
 
-        # Determine initial content type from the object key extension (used as fallback)
+        # Determine fallback content type from the object key extension
         fallback_content_type, _ = mimetypes.guess_type(object_key)
         if not fallback_content_type:
             if object_key.endswith(".webm"):
@@ -228,48 +229,82 @@ async def stream_replay(
         download_url = result.get("download_url", "")
 
         if not download_url:
+            logger.error(f"[REPLAY STREAM] No download URL returned for bucket={bucket_name} key={object_key}")
             raise HTTPException(status_code=404, detail="Video not found in storage")
 
-        # Do a HEAD request to detect the actual content-type from storage
-        # This handles the case where a .mp4 file is actually webm bytes (or vice versa)
-        content_type = fallback_content_type
-        try:
-            async with httpx_client.AsyncClient(timeout=30.0, follow_redirects=True) as http:
-                head_resp = await http.head(download_url)
-                actual_ct = head_resp.headers.get("content-type", "")
-                if actual_ct:
-                    # Strip charset or other params
-                    actual_ct_clean = actual_ct.split(";")[0].strip().lower()
-                    # Only use storage-reported type if it's a real media type (not generic octet-stream)
-                    if actual_ct_clean and actual_ct_clean != "application/octet-stream":
-                        content_type = actual_ct_clean
-                        logger.info(f"[REPLAY STREAM] Using storage content-type: {content_type}")
-                    else:
-                        logger.info(f"[REPLAY STREAM] Storage returned generic type '{actual_ct_clean}', using fallback: {fallback_content_type}")
-        except Exception as head_err:
-            logger.warning(f"[REPLAY STREAM] HEAD request failed, using fallback content-type: {head_err}")
+        logger.info(
+            f"[REPLAY STREAM] Got download URL for bucket={bucket_name} key={object_key} "
+            f"url_prefix={download_url[:80]}..."
+        )
 
-        # Fetch the actual video content from the presigned URL
-        async def stream_video():
-            async with httpx_client.AsyncClient(timeout=120.0, follow_redirects=True) as http:
-                async with http.stream("GET", download_url) as response:
-                    response.raise_for_status()
-                    async for chunk in response.aiter_bytes(chunk_size=65536):
-                        yield chunk
+        # Create a persistent httpx client for the streaming duration
+        http_client = httpx_client.AsyncClient(timeout=120.0, follow_redirects=True)
+
+        # Open a single streaming GET request — NO separate HEAD request.
+        # Some presigned URLs are single-use; a HEAD would consume it.
+        request = http_client.build_request("GET", download_url)
+        response = await http_client.send(request, stream=True)
+
+        logger.info(
+            f"[REPLAY STREAM] GET response status={response.status_code} "
+            f"content-type={response.headers.get('content-type', 'N/A')} "
+            f"content-length={response.headers.get('content-length', 'N/A')}"
+        )
+
+        # If storage returned an error, read the body and report
+        if response.status_code >= 400:
+            error_body = await response.aread()
+            await response.aclose()
+            await http_client.aclose()
+            error_text = error_body[:500].decode("utf-8", errors="replace")
+            logger.error(
+                f"[REPLAY STREAM] Storage returned error {response.status_code}: {error_text}"
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=f"Storage returned HTTP {response.status_code}",
+            )
+
+        # Determine content type from the GET response headers
+        content_type = fallback_content_type
+        actual_ct = response.headers.get("content-type", "")
+        if actual_ct:
+            actual_ct_clean = actual_ct.split(";")[0].strip().lower()
+            if actual_ct_clean and actual_ct_clean != "application/octet-stream":
+                content_type = actual_ct_clean
+                logger.info(f"[REPLAY STREAM] Using storage content-type: {content_type}")
+            else:
+                logger.info(
+                    f"[REPLAY STREAM] Storage returned generic type '{actual_ct_clean}', "
+                    f"using fallback: {fallback_content_type}"
+                )
+
+        # Get content length for video seeking support
+        content_length = response.headers.get("content-length")
 
         # Extract filename for Content-Disposition
         filename = object_key.split("/")[-1] if "/" in object_key else object_key
 
+        async def stream_generator():
+            """Yield chunks from the already-open GET response, then clean up."""
+            try:
+                async for chunk in response.aiter_bytes(chunk_size=65536):
+                    yield chunk
+            finally:
+                await response.aclose()
+                await http_client.aclose()
+
         headers = {
-            "Content-Type": content_type,
             "Content-Disposition": f'inline; filename="{filename}"',
             "Accept-Ranges": "bytes",
             "Cache-Control": "public, max-age=3600",
             "Access-Control-Allow-Origin": "*",
         }
+        if content_length:
+            headers["Content-Length"] = content_length
 
         return StreamingResponse(
-            stream_video(),
+            stream_generator(),
             media_type=content_type,
             headers=headers,
         )
@@ -277,5 +312,5 @@ async def stream_replay(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error streaming replay: {e}", exc_info=True)
+        logger.error(f"[REPLAY STREAM] Error streaming replay: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

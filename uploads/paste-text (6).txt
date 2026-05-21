@@ -1,0 +1,49 @@
+tw-to-css loaded
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 🔧 DEBUG: Starting to load runtime config...
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+/api/config:1 
+ Failed to load resource: the server responded with a status of 403 ()
+appPlugins-atoms-pro…1774333923027.js:32 🔧 DEBUG: Config fetch failed with status: 403
+appPlugins-atoms-pro…1774333923027.js:32 🔧 DEBUG: Config loading finished, configLoading set to false
+appPlugins-atoms-pro…1774333923027.js:32 Runtime configuration loaded successfully
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [SmartScore] Fetching replay: 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [routes-scanner] notifyParentWindow 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [SmartScore] Replay find response: {"object_key":"replays/6/6/course1_target1.mp4"}
+appPlugins-atoms-pro…1774333923027.js:32 [SmartScore] Found object_key: replays/6/6/course1_target1.mp4
+appPlugins-atoms-pro…1774333923027.js:32 [SmartScore] Stream URL: /api/v1/replays/stream?bucket_name=arrow-replays&object_key=replays%2F6%2F6%2Fcourse1_target1.mp4
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+index-DNM4GEhJ.js:11 [SmartScore] Video playback error: 4 PipelineStatus::DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed
+﻿
+
+Agentic extensions debugging
+You can now debug extensions through a coding agent using new tools in DevTools for agents, available through the MCP server.
+
+Sort network requests
+The Network panel introduces a new Request # column, allowing you to sort requests by their absolute chronological order of occurrence, independent of priority or duration.
+
+Accessibility tree
+To streamline the Elements panel, the Accessibility tree toggle has moved from the DOM tree to the Accessibility tab within the panel.
