@@ -95,14 +95,8 @@ export default function Scorecard() {
     for (let t = 1; t <= targets; t++) {
       try {
         const res = await client.apiCall.invoke({
-          url: '/api/v1/replays/get',
+          url: `/api/v1/replays/get?tournament_id=${selectedTournament.id}&archer_id=${selectedArcher.id}&course_number=${courseNum}&target_number=${t}`,
           method: 'GET',
-          data: {
-            tournament_id: selectedTournament.id,
-            archer_id: selectedArcher.id,
-            course_number: courseNum,
-            target_number: t,
-          },
         });
         if (res?.data?.object_key) {
           map[t] = res.data.object_key;

@@ -61,9 +61,10 @@ class ReplayOpsService:
             # Insert new record
             insert_query = text(
                 "INSERT INTO replay_videos (user_id, tournament_id, archer_id, "
-                "course_number, target_number, object_key, visibility) "
+                "course_number, target_number, object_key, visibility, "
+                "created_at, updated_at) "
                 "VALUES (:user_id, :tournament_id, :archer_id, :course_number, "
-                ":target_number, :object_key, :visibility) "
+                ":target_number, :object_key, :visibility, NOW(), NOW()) "
                 "RETURNING id"
             )
             result = await self.db.execute(

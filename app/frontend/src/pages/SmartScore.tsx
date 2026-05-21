@@ -62,15 +62,13 @@ export default function SmartScore() {
     const fetchReplay = async () => {
       setLoadingReplay(true);
       try {
+        const tid = parseInt(tournamentId);
+        const aid = parseInt(archerId);
+        const cn = parseInt(courseNumber);
+        const tn = parseInt(targetNumber);
         const response = await client.apiCall.invoke({
-          url: '/api/v1/replays/get',
+          url: `/api/v1/replays/get?tournament_id=${tid}&archer_id=${aid}&course_number=${cn}&target_number=${tn}`,
           method: 'GET',
-          data: {
-            tournament_id: parseInt(tournamentId),
-            archer_id: parseInt(archerId),
-            course_number: parseInt(courseNumber),
-            target_number: parseInt(targetNumber),
-          },
         });
 
         if (cancelled) return;
