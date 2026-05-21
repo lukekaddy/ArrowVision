@@ -56,8 +56,9 @@ const DEFAULT_ENTRIES: ScoreEntry[] = [
 ];
 
 export default function CreateScorecard() {
-  const { user, login } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
+  const navigateToLogin = () => navigate('/landing');
   const [searchParams] = useSearchParams();
   const tournamentId = searchParams.get('tournament_id');
   const client = getClient();
@@ -146,7 +147,7 @@ export default function CreateScorecard() {
           <ClipboardList className="h-16 w-16 text-slate-600 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-white mb-3">Sign In Required</h2>
           <p className="text-slate-400 mb-6">You need to sign in to create a scorecard.</p>
-          <Button onClick={login} className="bg-emerald-500 hover:bg-emerald-600 text-white">
+          <Button onClick={navigateToLogin} className="bg-emerald-500 hover:bg-emerald-600 text-white">
             Sign In
           </Button>
         </div>

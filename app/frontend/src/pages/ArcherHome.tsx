@@ -44,7 +44,7 @@ interface PublicTournament {
 }
 
 export default function ArcherHome() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [myTournaments, setMyTournaments] = useState<MyTournamentEntry[]>([]);
   const [upcomingTournaments, setUpcomingTournaments] = useState<PublicTournament[]>([]);
   const [loadingMy, setLoadingMy] = useState(true);
@@ -53,11 +53,18 @@ export default function ArcherHome() {
 
   useEffect(() => {
     const fetchMyTournaments = async () => {
+      if (!token) {
+        setLoadingMy(false);
+        return;
+      }
       try {
         const res = await client.apiCall.invoke({
           url: '/api/v1/tournament/my-tournaments',
           method: 'GET',
           data: {},
+          options: {
+            headers: { Authorization: `Bearer ${token}` },
+          },
         });
         setMyTournaments(res?.data?.items || res?.data || []);
       } catch {
@@ -67,7 +74,7 @@ export default function ArcherHome() {
       }
     };
     fetchMyTournaments();
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     const fetchUpcoming = async () => {
@@ -89,7 +96,7 @@ export default function ArcherHome() {
     fetchUpcoming();
   }, []);
 
-  const displayName = user?.name || user?.email?.split('@')[0] || 'Archer';
+  const displayName = user?.first_name || user?.email?.split('@')[0] || 'Archer';
 
   return (
     <Layout>

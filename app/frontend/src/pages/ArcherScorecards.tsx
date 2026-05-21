@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Layout from '@/components/Layout';
+import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { ClipboardList, Calendar, MapPin, ChevronDown, ChevronUp, Target, ArrowLeft } from 'lucide-react';
 
@@ -35,6 +36,7 @@ interface ScoreDetail {
 }
 
 export default function ArcherScorecards() {
+  const { token } = useAuth();
   const [myTournaments, setMyTournaments] = useState<MyTournamentEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -44,11 +46,18 @@ export default function ArcherScorecards() {
 
   useEffect(() => {
     const fetchMyTournaments = async () => {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
       try {
         const res = await client.apiCall.invoke({
           url: '/api/v1/tournament/my-tournaments',
           method: 'GET',
           data: {},
+          options: {
+            headers: { Authorization: `Bearer ${token}` },
+          },
         });
         setMyTournaments(res?.data?.items || res?.data || []);
       } catch {
@@ -58,7 +67,7 @@ export default function ArcherScorecards() {
       }
     };
     fetchMyTournaments();
-  }, []);
+  }, [token]);
 
   const toggleExpand = async (tournamentId: number) => {
     if (expandedId === tournamentId) {

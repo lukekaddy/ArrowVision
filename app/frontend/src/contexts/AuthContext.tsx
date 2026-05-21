@@ -2,109 +2,133 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { getClient } from '@/lib/client';
 
 interface AuthUser {
-  id: string;
-  email?: string;
-  name?: string;
-  avatar?: string;
-  role?: string | null;
+  id: number;
+  email: string;
+  first_name: string;
+  last_name: string;
+  phone?: string;
+  role: string;
+}
+
+interface RegisterData {
+  email: string;
+  password: string;
+  first_name: string;
+  last_name: string;
+  phone?: string;
+  role: string;
 }
 
 interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
   isAuthenticated: boolean;
-  needsRoleSelection: boolean;
-  login: () => void;
-  logout: () => Promise<void>;
-  refreshRole: () => Promise<void>;
+  token: string | null;
+  login: (email: string, password: string) => Promise<AuthUser>;
+  register: (data: RegisterData) => Promise<AuthUser>;
+  logout: () => void;
 }
+
+const TOKEN_KEY = 'arrowlive_token';
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   isAuthenticated: false,
-  needsRoleSelection: false,
-  login: () => {},
-  logout: async () => {},
-  refreshRole: async () => {},
+  token: null,
+  login: async () => { throw new Error('Not initialized'); },
+  register: async () => { throw new Error('Not initialized'); },
+  logout: () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [needsRoleSelection, setNeedsRoleSelection] = useState(false);
   const client = getClient();
 
-  const fetchRole = useCallback(async () => {
-    try {
-      const roleRes = await client.apiCall.invoke({
-        url: '/api/v1/roles/me',
-        method: 'GET',
-        data: {},
-      });
-      const role = roleRes?.data?.role ?? null;
-      setUser((prev) => (prev ? { ...prev, role } : prev));
-      setNeedsRoleSelection(role === null || role === undefined);
-    } catch {
-      setNeedsRoleSelection(true);
-    }
-  }, [client]);
-
+  // Check for existing token on mount
   useEffect(() => {
     const checkAuth = async () => {
-      try {
-        const res = await client.auth.me();
-        if (res?.data) {
-          const authUser: AuthUser = {
-            id: res.data.id || res.data.sub || '',
-            email: res.data.email || '',
-            name: res.data.name || res.data.nickname || '',
-            avatar: res.data.avatar || res.data.picture || '',
-            role: null,
-          };
-          setUser(authUser);
+      const storedToken = localStorage.getItem(TOKEN_KEY);
+      if (!storedToken) {
+        setLoading(false);
+        return;
+      }
 
-          // Fetch role after auth
-          try {
-            const roleRes = await client.apiCall.invoke({
-              url: '/api/v1/roles/me',
-              method: 'GET',
-              data: {},
-            });
-            const role = roleRes?.data?.role ?? null;
-            setUser({ ...authUser, role });
-            setNeedsRoleSelection(role === null || role === undefined);
-          } catch {
-            setNeedsRoleSelection(true);
-          }
+      try {
+        const res = await client.apiCall.invoke({
+          url: '/api/v1/custom-auth/me',
+          method: 'GET',
+          data: {},
+          options: {
+            headers: { Authorization: `Bearer ${storedToken}` },
+          },
+        });
+
+        if (res?.data) {
+          setUser(res.data as AuthUser);
+          setToken(storedToken);
+        } else {
+          // Token invalid, clear it
+          localStorage.removeItem(TOKEN_KEY);
         }
       } catch {
-        setUser(null);
+        localStorage.removeItem(TOKEN_KEY);
       } finally {
         setLoading(false);
       }
     };
+
     checkAuth();
   }, []);
 
-  const login = useCallback(() => {
-    client.auth.toLogin();
+  const login = useCallback(async (email: string, password: string): Promise<AuthUser> => {
+    const res = await client.apiCall.invoke({
+      url: '/api/v1/custom-auth/login',
+      method: 'POST',
+      data: { email, password },
+    });
+
+    if (!res?.data?.token || !res?.data?.user) {
+      throw new Error(res?.data?.detail || 'Login failed');
+    }
+
+    const { token: newToken, user: userData } = res.data;
+    localStorage.setItem(TOKEN_KEY, newToken);
+    setToken(newToken);
+    setUser(userData);
+    return userData;
   }, [client]);
 
-  const logout = useCallback(async () => {
-    await client.auth.logout();
+  const register = useCallback(async (data: RegisterData): Promise<AuthUser> => {
+    const res = await client.apiCall.invoke({
+      url: '/api/v1/custom-auth/register',
+      method: 'POST',
+      data,
+    });
+
+    if (!res?.data?.token || !res?.data?.user) {
+      throw new Error(res?.data?.detail || 'Registration failed');
+    }
+
+    const { token: newToken, user: userData } = res.data;
+    localStorage.setItem(TOKEN_KEY, newToken);
+    setToken(newToken);
+    setUser(userData);
+    return userData;
+  }, [client]);
+
+  const logout = useCallback(() => {
+    localStorage.removeItem(TOKEN_KEY);
+    setToken(null);
     setUser(null);
-    setNeedsRoleSelection(false);
-  }, [client]);
-
-  const refreshRole = useCallback(async () => {
-    await fetchRole();
-  }, [fetchRole]);
+  }, []);
 
   const isAuthenticated = !!user;
 
   return (
-    <AuthContext.Provider value={{ user, loading, isAuthenticated, needsRoleSelection, login, logout, refreshRole }}>
+    <AuthContext.Provider value={{ user, loading, isAuthenticated, token, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

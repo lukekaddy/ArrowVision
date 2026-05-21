@@ -22,7 +22,7 @@ interface MulliganConfig {
 
 export default function ArcherRegister() {
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const client = getClient();
 
   const [tournament, setTournament] = useState<TournamentDetail | null>(null);
@@ -97,6 +97,9 @@ export default function ArcherRegister() {
         url: '/api/v1/tournament/register-archer',
         method: 'POST',
         data: body,
+        options: {
+          headers: { Authorization: `Bearer ${token}` },
+        },
       });
       setSuccess(true);
     } catch (err: unknown) {

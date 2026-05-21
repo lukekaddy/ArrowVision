@@ -47,31 +47,27 @@ function getNavLinksForRole(role: string | null | undefined, isLoggedIn: boolean
   if (role === 'admin') {
     return ADMIN_NAV_LINKS;
   }
-  // Regular users (archers) see archer-specific navigation
   return ARCHER_NAV_LINKS;
 }
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
-  const { user, login, logout, needsRoleSelection } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
 
-  const navLinks = getNavLinksForRole(user?.role, !!user);
+  const navLinks = getNavLinksForRole(user?.role, isAuthenticated);
   const isAdmin = user?.role === 'admin';
-
-  // Auto-redirect to role selection if needed
-  useEffect(() => {
-    if (user && needsRoleSelection && location.pathname !== '/role-select' && location.pathname !== '/auth/callback' && location.pathname !== '/replay-camera') {
-      navigate('/role-select');
-    }
-  }, [user, needsRoleSelection, location.pathname, navigate]);
 
   // Close admin menu on route change
   useEffect(() => {
     setAdminMenuOpen(false);
   }, [location.pathname]);
+
+  const handleSignIn = () => {
+    navigate('/landing');
+  };
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#0f172a' }}>
@@ -137,7 +133,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </nav>
 
           <div className="flex items-center gap-2">
-            {user ? (
+            {isAuthenticated ? (
               <div className="flex items-center gap-2">
                 <div className="h-8 w-8 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">
                   <User className="h-4 w-4 text-emerald-400" />
@@ -153,7 +149,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </div>
             ) : (
               <Button
-                onClick={login}
+                onClick={handleSignIn}
                 size="sm"
                 className="bg-emerald-500 hover:bg-emerald-600 text-white"
               >
@@ -208,7 +204,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 ))}
               </>
             )}
-            {user && (
+            {isAuthenticated && (
               <button
                 onClick={() => { logout(); setMenuOpen(false); }}
                 className="block w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-red-400 hover:bg-slate-700/50"

@@ -1,0 +1,42 @@
+{
+    "title": "custom_users",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "email": {
+            "type": "string",
+            "description": "User email address, unique"
+        },
+        "password_hash": {
+            "type": "string",
+            "description": "Bcrypt hashed password"
+        },
+        "first_name": {
+            "type": "string",
+            "description": "User first name"
+        },
+        "last_name": {
+            "type": "string",
+            "description": "User last name"
+        },
+        "phone": {
+            "type": "string",
+            "description": "User phone number"
+        },
+        "role": {
+            "type": "string",
+            "description": "User role: admin or user"
+        }
+    },
+    "required": [
+        "id",
+        "email",
+        "password_hash",
+        "first_name",
+        "last_name",
+        "role"
+    ]
+}

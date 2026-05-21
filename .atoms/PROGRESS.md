@@ -9,6 +9,13 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 - Scorekeepers can enter scores for their assigned group
 
 ## Task Breakdown
+- [x] Create custom_users table for email/password auth (first_name, last_name, email, phone, password_hash, role)
+- [x] Build backend auth endpoints: POST /api/v1/custom-auth/register, POST /api/v1/custom-auth/login, GET /api/v1/custom-auth/me
+- [x] Redesign landing page as role selection splash (Admin vs Archer cards)
+- [x] Build Sign In / Register page with tabbed interface
+- [x] Update AuthContext to use custom JWT auth instead of OIDC
+- [x] Remove archer registration from admin Tournament Dashboard (keep read-only list)
+- [x] Update Archer Home with tournament registration flow and scorecard viewing
 - [x] Create database tables (tournaments, tournament_archers, scores)
 - [x] Build backend API endpoint `/api/v1/tournament/my-tournaments` for archer's registered tournaments
 - [x] Build Archer Home Page (`/archer`) with upcoming tournaments and registered tournaments

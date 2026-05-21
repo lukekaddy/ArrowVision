@@ -4,15 +4,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from '@/contexts/AuthContext';
 import Index from './pages/Index';
-import AuthCallback from './pages/AuthCallback';
-import AuthError from './pages/AuthError';
+import Landing from './pages/Landing';
+import AuthPage from './pages/AuthPage';
 import TournamentCreate from './pages/TournamentCreate';
 import TournamentDashboard from './pages/TournamentDashboard';
 import Scorecard from './pages/Scorecard';
 import Leaderboard from './pages/Leaderboard';
 import SmartScore from './pages/SmartScore';
 import Results from './pages/Results';
-import RoleSelection from './pages/RoleSelection';
 import ReplayCamera from './pages/ReplayCamera';
 import CreateScorecard from './pages/CreateScorecard';
 import ArcherHome from './pages/ArcherHome';
@@ -25,6 +24,8 @@ const queryClient = new QueryClient();
 const AppRoutes = () => (
   <Routes>
     <Route path="/" element={<Index />} />
+    <Route path="/landing" element={<Landing />} />
+    <Route path="/auth" element={<AuthPage />} />
     <Route path="/create-tournament" element={<TournamentCreate />} />
     <Route path="/create-scorecard" element={<CreateScorecard />} />
     <Route path="/dashboard/:id" element={<TournamentDashboard />} />
@@ -32,14 +33,11 @@ const AppRoutes = () => (
     <Route path="/leaderboard" element={<Leaderboard />} />
     <Route path="/smart-score" element={<SmartScore />} />
     <Route path="/results" element={<Results />} />
-    <Route path="/role-select" element={<RoleSelection />} />
     <Route path="/replay-camera" element={<ReplayCamera />} />
     <Route path="/profile" element={<Profile />} />
     <Route path="/archer" element={<ArcherHome />} />
     <Route path="/archer/register/:id" element={<ArcherRegister />} />
     <Route path="/archer/my-scorecards" element={<ArcherScorecards />} />
-    <Route path="/auth/callback" element={<AuthCallback />} />
-    <Route path="/auth/error" element={<AuthError />} />
   </Routes>
 );
 

@@ -4,7 +4,7 @@ import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
-import { Trophy, ClipboardList, BarChart3, ArrowRight, Calendar, MapPin, Zap } from 'lucide-react';
+import { Trophy, ClipboardList, BarChart3, Calendar, MapPin, Zap } from 'lucide-react';
 
 const HERO_URL = 'https://mgx-backend-cdn.metadl.com/generate/images/1230028/2026-05-14/orhcm3yaagpa/hero-archery-sunset.png';
 
@@ -50,21 +50,24 @@ function parseCourses(coursesStr?: string): CourseConfig[] {
 }
 
 export default function Index() {
-  const { user, login } = useAuth();
+  const { user, isAuthenticated, loading } = useAuth();
   const navigate = useNavigate();
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [loadingTournaments, setLoadingTournaments] = useState(true);
   const client = getClient();
 
   useEffect(() => {
+    if (loading) return;
+    if (!isAuthenticated) {
+      navigate('/landing', { replace: true });
+      return;
+    }
     if (user) {
       if (user.role === 'user') {
         navigate('/archer', { replace: true });
-      } else if (!user.role) {
-        navigate('/role-select', { replace: true });
       }
     }
-  }, [user, navigate]);
+  }, [user, isAuthenticated, loading, navigate]);
 
   useEffect(() => {
     const fetchTournaments = async () => {
@@ -115,11 +118,7 @@ export default function Index() {
           <p className="text-lg md:text-xl text-slate-300 mb-8 max-w-2xl mx-auto">
             Digital archery tournament scoring. Replace paper scorecards with live scoring, real-time leaderboards, and instant results.
           </p>
-          {!user && (
-            <Button size="lg" onClick={login} className="bg-emerald-500 hover:bg-emerald-600 text-white gap-2 h-12 px-6">
-              Sign In to Get Started <ArrowRight className="h-5 w-5" />
-            </Button>
-          )}
+
         </div>
       </section>
 

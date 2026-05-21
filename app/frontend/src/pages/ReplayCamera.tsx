@@ -29,7 +29,7 @@ type CameraStatus = 'idle' | 'requesting' | 'active' | 'error';
 type RecordingStatus = 'idle' | 'listening' | 'triggered' | 'uploading' | 'success' | 'error';
 
 export default function ReplayCamera() {
-  const { user, login } = useAuth();
+  const { user } = useAuth();
   const client = getClient();
 
   // Refs
@@ -496,7 +496,7 @@ export default function ReplayCamera() {
             <div className="flex-1">
               <p className="text-amber-300 text-sm">Sign in to save replay clips to cloud storage.</p>
             </div>
-            <Button onClick={login} size="sm" className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs">
+            <Button onClick={() => window.location.href = '/landing'} size="sm" className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs">
               Sign In
             </Button>
           </div>
