@@ -14,7 +14,7 @@ export default function SmartScore() {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const tournamentId = searchParams.get('tournamentId');
-  const courseNumber = searchParams.get('courseNumber');
+  const courseNumber = searchParams.get('courseNumber') || '1'; // Default to course 1 if not specified
   const archerId = searchParams.get('archerId');
   const archerName = searchParams.get('archerName');
   const targetNumber = searchParams.get('targetNumber');
