@@ -15,9 +15,15 @@ interface TournamentDetail {
   mulligans?: string;
 }
 
+interface MulliganTypeConfig {
+  name: string;
+  max?: number;
+  maxAllowed?: number;
+}
+
 interface MulliganConfig {
   enabled: boolean;
-  types?: { name: string; max: number }[];
+  types?: MulliganTypeConfig[];
 }
 
 export default function ArcherRegister() {
@@ -66,11 +72,22 @@ export default function ArcherRegister() {
   let mulliganConfig: MulliganConfig = { enabled: false };
   try {
     if (tournament?.mulligans) {
-      mulliganConfig = JSON.parse(tournament.mulligans);
+      // mulligans may be a JSON string or already-parsed object from the API
+      const raw = tournament.mulligans;
+      if (typeof raw === 'string') {
+        mulliganConfig = JSON.parse(raw);
+      } else if (typeof raw === 'object') {
+        mulliganConfig = raw as unknown as MulliganConfig;
+      }
     }
   } catch {
     // ignore parse errors
   }
+
+  // Helper to get the max value from a mulligan type config (handles both `max` and `maxAllowed` keys)
+  const getMulliganMax = (mt: MulliganTypeConfig): number => {
+    return mt.max ?? mt.maxAllowed ?? 1;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -237,24 +254,28 @@ export default function ArcherRegister() {
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
               <h3 className="text-sm font-semibold text-amber-400 mb-3">Purchase Mulligans (Optional)</h3>
               <div className="space-y-3">
-                {mulliganConfig.types.map((mt) => (
-                  <div key={mt.name} className="flex items-center justify-between">
-                    <span className="text-sm text-slate-300">{mt.name} (max {mt.max})</span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={mt.max}
-                      value={purchasedMulligans[mt.name] || 0}
-                      onChange={(e) =>
-                        setPurchasedMulligans((prev) => ({
-                          ...prev,
-                          [mt.name]: Math.min(Number(e.target.value), mt.max),
-                        }))
-                      }
-                      className="w-20 h-10 px-3 rounded-lg border border-slate-600 bg-slate-800 text-white text-center focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
-                    />
-                  </div>
-                ))}
+                {mulliganConfig.types.map((mt) => {
+                  const maxVal = getMulliganMax(mt);
+                  return (
+                    <div key={mt.name} className="flex items-center justify-between">
+                      <span className="text-sm text-slate-300">{mt.name} (max {maxVal})</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={maxVal}
+                        value={purchasedMulligans[mt.name] ?? 0}
+                        onChange={(e) => {
+                          const newVal = Math.max(0, Math.min(Number(e.target.value) || 0, maxVal));
+                          setPurchasedMulligans((prev) => ({
+                            ...prev,
+                            [mt.name]: newVal,
+                          }));
+                        }}
+                        className="w-20 h-10 px-3 rounded-lg border border-slate-600 bg-slate-800 text-white text-center focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
