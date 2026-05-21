@@ -91,6 +91,22 @@ async def get_tournament_public(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/leaderboard")
+async def get_leaderboard_query(
+    tournament_id: int = Query(...),
+    division: Optional[str] = Query(None),
+    course_number: Optional[int] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get leaderboard for a tournament via query param (public)"""
+    service = TournamentOpsService(db)
+    try:
+        return await service.get_leaderboard(tournament_id, division=division, course_number=course_number)
+    except Exception as e:
+        logger.error(f"Error fetching leaderboard: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/leaderboard/{tournament_id}")
 async def get_leaderboard(
     tournament_id: int,
@@ -126,10 +142,9 @@ async def get_my_tournaments(
 @router.get("/archers/{tournament_id}")
 async def get_tournament_archers(
     tournament_id: int,
-    current_user: UserInfo = Depends(get_current_custom_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get all archers for a tournament"""
+    """Get all archers for a tournament (public - needed for scorecard viewing)"""
     service = TournamentOpsService(db)
     try:
         return await service.get_tournament_archers(tournament_id)
@@ -171,10 +186,9 @@ async def submit_score(
 @router.get("/scores/{tournament_id}")
 async def get_tournament_scores(
     tournament_id: int,
-    current_user: UserInfo = Depends(get_current_custom_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get all scores for a tournament"""
+    """Get all scores for a tournament (public - needed for scorecard/leaderboard viewing)"""
     service = TournamentOpsService(db)
     try:
         return await service.get_tournament_scores(tournament_id)

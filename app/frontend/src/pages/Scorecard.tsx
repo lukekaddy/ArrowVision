@@ -40,7 +40,7 @@ interface ReplayInfo {
 type ReplayModalState = 'idle' | 'loading' | 'ready' | 'error';
 
 export default function Scorecard() {
-  const { user, login } = useAuth();
+  const { user, login, token } = useAuth();
   const client = getClient();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -120,6 +120,7 @@ export default function Scorecard() {
             course_number: courseNum,
             target_number: t,
           },
+          ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
         });
         console.log(`[Scorecard] Replay check target ${t}:`, JSON.stringify(res?.data));
         if (res?.data?.object_key) {
