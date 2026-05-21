@@ -19,6 +19,7 @@ const ADMIN_NAV_LINKS: NavLink[] = [
   { to: '/replay-camera', label: 'Replay Camera' },
   { to: '/leaderboard', label: 'Live Leaderboard' },
   { to: '/results', label: 'Results' },
+  { to: '/profile', label: 'Profile' },
 ];
 
 const ARCHER_NAV_LINKS: NavLink[] = [
@@ -26,6 +27,7 @@ const ARCHER_NAV_LINKS: NavLink[] = [
   { to: '/archer/my-scorecards', label: 'My Scorecards' },
   { to: '/leaderboard', label: 'Live Leaderboard' },
   { to: '/results', label: 'Results' },
+  { to: '/profile', label: 'Profile' },
 ];
 
 const PUBLIC_NAV_LINKS: NavLink[] = [

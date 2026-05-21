@@ -17,17 +17,6 @@ export default function RoleSelection() {
     }
   }, [user, loading, navigate]);
 
-  // Redirect if user already has a role
-  useEffect(() => {
-    if (user && user.role) {
-      if (user.role === 'admin') {
-        navigate('/', { replace: true });
-      } else {
-        navigate('/archer', { replace: true });
-      }
-    }
-  }, [user, navigate]);
-
   const handleSelectRole = async (role: 'admin' | 'user') => {
     if (selecting) return;
     setSelecting(true);

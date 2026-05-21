@@ -18,6 +18,7 @@ import CreateScorecard from './pages/CreateScorecard';
 import ArcherHome from './pages/ArcherHome';
 import ArcherRegister from './pages/ArcherRegister';
 import ArcherScorecards from './pages/ArcherScorecards';
+import Profile from './pages/Profile';
 
 const queryClient = new QueryClient();
 
@@ -33,6 +34,7 @@ const AppRoutes = () => (
     <Route path="/results" element={<Results />} />
     <Route path="/role-select" element={<RoleSelection />} />
     <Route path="/replay-camera" element={<ReplayCamera />} />
+    <Route path="/profile" element={<Profile />} />
     <Route path="/archer" element={<ArcherHome />} />
     <Route path="/archer/register/:id" element={<ArcherRegister />} />
     <Route path="/archer/my-scorecards" element={<ArcherScorecards />} />
