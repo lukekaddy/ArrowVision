@@ -40,7 +40,7 @@ interface ReplayInfo {
 type ReplayModalState = 'idle' | 'loading' | 'ready' | 'error';
 
 export default function Scorecard() {
-  const { user, login, token } = useAuth();
+  const { user, login } = useAuth();
   const client = getClient();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -120,7 +120,6 @@ export default function Scorecard() {
             course_number: courseNum,
             target_number: t,
           },
-          ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
         });
         console.log(`[Scorecard] Replay check target ${t}:`, JSON.stringify(res?.data));
         if (res?.data?.object_key) {
@@ -144,55 +143,14 @@ export default function Scorecard() {
     setReplayModalUrl(null);
 
     try {
-      console.log('[Replay] Requesting download URL for object_key:', objectKey);
-      const res = await client.storage.getDownloadUrl({
-        bucket_name: 'arrow-replays',
-        object_key: objectKey,
-      });
-      console.log('[Replay] getDownloadUrl response:', JSON.stringify(res));
-
-      // Try multiple possible response structures
-      let url: string | null = null;
-      if (res?.data?.download_url) {
-        url = res.data.download_url;
-      } else if (res?.data?.url) {
-        url = res.data.url;
-      } else if (typeof res?.data === 'string' && res.data.startsWith('http')) {
-        url = res.data;
-      } else if (res?.download_url) {
-        url = res.download_url;
-      }
-
-      console.log('[Replay] Resolved URL:', url);
-
-      if (url) {
-        setReplayModalUrl(url);
-        setReplayModalState('ready');
-      } else {
-        // Fallback: try using download() which returns the downloadUrl
-        console.log('[Replay] Trying fallback with client.storage.download...');
-        try {
-          const downloadRes = await client.storage.download({
-            bucket_name: 'arrow-replays',
-            object_key: objectKey,
-          });
-          console.log('[Replay] download() response:', JSON.stringify(downloadRes));
-          const fallbackUrl = downloadRes?.data?.download_url || downloadRes?.data?.url || (typeof downloadRes?.data === 'string' ? downloadRes.data : null);
-          if (fallbackUrl) {
-            setReplayModalUrl(fallbackUrl);
-            setReplayModalState('ready');
-          } else {
-            setReplayModalState('error');
-            setReplayError('Could not retrieve replay video URL. The response format was unexpected.');
-          }
-        } catch (fallbackErr) {
-          console.error('[Replay] Fallback download() also failed:', fallbackErr);
-          setReplayModalState('error');
-          setReplayError('Could not retrieve replay video URL.');
-        }
-      }
+      console.log('[Replay] Using streaming proxy for object_key:', objectKey);
+      // Use the streaming proxy endpoint instead of presigned URL
+      // This ensures correct Content-Type headers and avoids CORS/format issues
+      const streamUrl = `/api/v1/replays/stream?bucket_name=arrow-replays&object_key=${encodeURIComponent(objectKey)}`;
+      setReplayModalUrl(streamUrl);
+      setReplayModalState('ready');
     } catch (err) {
-      console.error('[Replay] getDownloadUrl error:', err);
+      console.error('[Replay] Error setting up replay URL:', err);
       setReplayModalState('error');
       setReplayError('Failed to load replay video. Please try again.');
     }

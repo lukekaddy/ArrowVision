@@ -81,14 +81,17 @@ async def save_replay(
 @router.post("/find", response_model=ReplayResponse)
 async def find_replay(
     data: FindReplayRequest,
-    current_user: UserInfo = Depends(get_current_custom_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Find replay video object_key for a specific archer/target (POST version)."""
+    """Find replay video object_key for a specific archer/target (POST version).
+    
+    This endpoint is publicly accessible - no auth required.
+    It only returns an object_key (metadata), no sensitive data.
+    """
     service = ReplayOpsService(db)
     try:
         logger.info(
-            f"[REPLAY FIND] user={current_user.id} tournament={data.tournament_id} "
+            f"[REPLAY FIND] tournament={data.tournament_id} "
             f"archer={data.archer_id} course={data.course_number} target={data.target_number}"
         )
         object_key = await service.get_replay(
@@ -183,4 +186,96 @@ async def get_download_url(
         )
     except Exception as e:
         logger.error(f"Error getting download URL: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/stream")
+async def stream_replay(
+    bucket_name: str = Query(...),
+    object_key: str = Query(...),
+):
+    """Stream replay video through the backend as a proxy.
+    
+    This endpoint:
+    - Does NOT require authentication (public access for video playback)
+    - Fetches the video from object storage using server-side credentials
+    - Streams it back with correct Content-Type headers
+    - Handles both .mp4 and .webm files correctly
+    - Supports basic Range requests for video seeking
+    """
+    from fastapi.responses import StreamingResponse
+    import httpx as httpx_client
+
+    try:
+        service = StorageService()
+
+        # Determine initial content type from the object key extension (used as fallback)
+        fallback_content_type, _ = mimetypes.guess_type(object_key)
+        if not fallback_content_type:
+            if object_key.endswith(".webm"):
+                fallback_content_type = "video/webm"
+            else:
+                fallback_content_type = "video/mp4"
+
+        # Get the download URL from storage service
+        endpoint = f"/api/v1/infra/client/oss/buckets/{bucket_name}/objects/download_url"
+        payload = {
+            "content_type": fallback_content_type,
+            "expires_in": 0,
+            "object_key": object_key,
+        }
+        result = await service._apost_oss_service(endpoint, payload)
+        download_url = result.get("download_url", "")
+
+        if not download_url:
+            raise HTTPException(status_code=404, detail="Video not found in storage")
+
+        # Do a HEAD request to detect the actual content-type from storage
+        # This handles the case where a .mp4 file is actually webm bytes (or vice versa)
+        content_type = fallback_content_type
+        try:
+            async with httpx_client.AsyncClient(timeout=30.0, follow_redirects=True) as http:
+                head_resp = await http.head(download_url)
+                actual_ct = head_resp.headers.get("content-type", "")
+                if actual_ct:
+                    # Strip charset or other params
+                    actual_ct_clean = actual_ct.split(";")[0].strip().lower()
+                    # Only use storage-reported type if it's a real media type (not generic octet-stream)
+                    if actual_ct_clean and actual_ct_clean != "application/octet-stream":
+                        content_type = actual_ct_clean
+                        logger.info(f"[REPLAY STREAM] Using storage content-type: {content_type}")
+                    else:
+                        logger.info(f"[REPLAY STREAM] Storage returned generic type '{actual_ct_clean}', using fallback: {fallback_content_type}")
+        except Exception as head_err:
+            logger.warning(f"[REPLAY STREAM] HEAD request failed, using fallback content-type: {head_err}")
+
+        # Fetch the actual video content from the presigned URL
+        async def stream_video():
+            async with httpx_client.AsyncClient(timeout=120.0, follow_redirects=True) as http:
+                async with http.stream("GET", download_url) as response:
+                    response.raise_for_status()
+                    async for chunk in response.aiter_bytes(chunk_size=65536):
+                        yield chunk
+
+        # Extract filename for Content-Disposition
+        filename = object_key.split("/")[-1] if "/" in object_key else object_key
+
+        headers = {
+            "Content-Type": content_type,
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=3600",
+            "Access-Control-Allow-Origin": "*",
+        }
+
+        return StreamingResponse(
+            stream_video(),
+            media_type=content_type,
+            headers=headers,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error streaming replay: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

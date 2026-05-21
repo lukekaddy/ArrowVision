@@ -383,7 +383,8 @@ export default function ReplayCamera() {
     const currentCourse = selectedCourseRef.current;
     const currentToken = tokenRef.current;
     const courseNum = currentCourse?.course || 1;
-    const objectKey = `replays/${currentTournament!.id}/${currentArcher!.id}/course${courseNum}_target${currentTarget}.mp4`;
+    const ext = clipBlob.type.includes('webm') ? 'webm' : 'mp4';
+    const objectKey = `replays/${currentTournament!.id}/${currentArcher!.id}/course${courseNum}_target${currentTarget}.${ext}`;
 
     console.log('[ReplayCamera] Starting upload:', {
       objectKey,

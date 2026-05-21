@@ -94,8 +94,7 @@ export default function SmartScore() {
         const aid = parseInt(archerId);
         const cn = parseInt(courseNumber);
         const tn = parseInt(targetNumber);
-        const currentToken = tokenRef.current;
-        console.log('[SmartScore] Fetching replay:', { tid, aid, cn, tn, fetchCounter, hasToken: !!currentToken });
+        console.log('[SmartScore] Fetching replay:', { tid, aid, cn, tn, fetchCounter });
         const response = await client.apiCall.invoke({
           url: '/api/v1/replays/find',
           method: 'POST',
@@ -105,7 +104,6 @@ export default function SmartScore() {
             course_number: cn,
             target_number: tn,
           },
-          ...(currentToken ? { options: { headers: { Authorization: `Bearer ${currentToken}` } } } : {}),
         });
         console.log('[SmartScore] Replay find response:', JSON.stringify(response?.data));
 
@@ -114,24 +112,11 @@ export default function SmartScore() {
         const objectKey = response?.data?.object_key;
         if (objectKey) {
           console.log('[SmartScore] Found object_key:', objectKey);
-          const currentTokenForDownload = tokenRef.current;
-          const downloadRes = await client.apiCall.invoke({
-            url: '/api/v1/replays/get-download-url',
-            method: 'POST',
-            data: { bucket_name: 'arrow-replays', object_key: objectKey },
-            ...(currentTokenForDownload ? { options: { headers: { Authorization: `Bearer ${currentTokenForDownload}` } } } : {}),
-          });
-
-          if (cancelled) return;
-
-          const url = downloadRes?.data?.download_url;
-          console.log('[SmartScore] Download URL:', url);
-          // Only set the URL if it's a valid non-empty string
-          // Note: Do NOT append cache-buster params - signed URLs already have unique signatures
-          // and extra query params can break the signature validation
-          if (url && typeof url === 'string' && url.trim().length > 0) {
-            setReplayVideoUrl(url);
-          }
+          // Use the streaming proxy endpoint instead of presigned URL
+          // This ensures correct Content-Type headers and avoids CORS/format issues
+          const streamUrl = `/api/v1/replays/stream?bucket_name=arrow-replays&object_key=${encodeURIComponent(objectKey)}`;
+          console.log('[SmartScore] Stream URL:', streamUrl);
+          setReplayVideoUrl(streamUrl);
         } else {
           console.log('[SmartScore] No object_key found in response');
         }
