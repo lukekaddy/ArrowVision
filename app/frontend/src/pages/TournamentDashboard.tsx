@@ -70,12 +70,16 @@ export default function TournamentDashboard() {
     phone: '',
     division: '',
     role: 'archer',
+    group_number: '',
+    target_number: '',
   });
   const [purchasedMulligansEnabled, setPurchasedMulligansEnabled] = useState(false);
   const [purchasedMulligans, setPurchasedMulligans] = useState<Record<string, number>>({});
   const [adding, setAdding] = useState(false);
   const [editingScore, setEditingScore] = useState<number | null>(null);
   const [editValue, setEditValue] = useState(0);
+  const [editingArcherGroup, setEditingArcherGroup] = useState<number | null>(null);
+  const [editGroupValue, setEditGroupValue] = useState('');
 
   const fetchData = async () => {
     if (!id) return;
@@ -143,10 +147,12 @@ export default function TournamentDashboard() {
           phone: archerForm.phone,
           division: archerForm.division,
           role: archerForm.role,
+          group_number: archerForm.group_number ? parseInt(archerForm.group_number) : null,
+          target_number: archerForm.target_number ? parseInt(archerForm.target_number) : null,
           purchased_mulligans: JSON.stringify(mulliganData),
         },
       });
-      setArcherForm({ first_name: '', last_name: '', phone: '', division: '', role: 'archer' });
+      setArcherForm({ first_name: '', last_name: '', phone: '', division: '', role: 'archer', group_number: '', target_number: '' });
       setPurchasedMulligansEnabled(false);
       setPurchasedMulligans({});
       fetchData();
@@ -325,6 +331,31 @@ export default function TournamentDashboard() {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-slate-400 text-xs mb-1 block">Group Number</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={archerForm.group_number}
+                      onChange={(e) => setArcherForm({ ...archerForm, group_number: e.target.value })}
+                      placeholder="e.g. 1, 2, 3..."
+                      className="bg-slate-900 border-slate-700 text-white placeholder:text-slate-500"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-slate-400 text-xs mb-1 block">Target Number</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={archerForm.target_number}
+                      onChange={(e) => setArcherForm({ ...archerForm, target_number: e.target.value })}
+                      placeholder="Starting target"
+                      className="bg-slate-900 border-slate-700 text-white placeholder:text-slate-500"
+                    />
+                  </div>
+                </div>
+
                 {/* Purchased Mulligans */}
                 {mulliganConfig && (
                   <div className="p-3 rounded-lg bg-slate-900/50 border border-slate-700/30">
@@ -396,6 +427,7 @@ export default function TournamentDashboard() {
                         <th className="text-left py-2 px-3">Group</th>
                         <th className="text-left py-2 px-3">Target</th>
                         <th className="text-left py-2 px-3">Role</th>
+                        <th className="text-left py-2 px-3">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -403,9 +435,57 @@ export default function TournamentDashboard() {
                         <tr key={a.id} className="border-b border-slate-700/30 text-slate-300">
                           <td className="py-2 px-3 font-medium text-white">{a.archer_name}</td>
                           <td className="py-2 px-3">{a.division || '-'}</td>
-                          <td className="py-2 px-3">{a.group_number ?? '-'}</td>
+                          <td className="py-2 px-3">
+                            {editingArcherGroup === a.id ? (
+                              <Input
+                                type="number"
+                                min={1}
+                                value={editGroupValue}
+                                onChange={(e) => setEditGroupValue(e.target.value)}
+                                className="w-16 h-8 bg-slate-900 border-slate-600 text-white text-sm"
+                                autoFocus
+                              />
+                            ) : (
+                              <span>{a.group_number ?? '-'}</span>
+                            )}
+                          </td>
                           <td className="py-2 px-3">{a.target_number ?? '-'}</td>
                           <td className="py-2 px-3">{a.role}</td>
+                          <td className="py-2 px-3">
+                            {editingArcherGroup === a.id ? (
+                              <Button
+                                size="sm"
+                                onClick={async () => {
+                                  try {
+                                    await client.entities.tournament_archers.update({
+                                      id: a.id.toString(),
+                                      data: { group_number: editGroupValue ? parseInt(editGroupValue) : null },
+                                    });
+                                    setEditingArcherGroup(null);
+                                    fetchData();
+                                  } catch (err) {
+                                    console.error('Error updating group:', err);
+                                  }
+                                }}
+                                className="bg-emerald-500 hover:bg-emerald-600 text-white h-7 px-2"
+                              >
+                                <Check className="h-3 w-3" />
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setEditingArcherGroup(a.id);
+                                  setEditGroupValue(a.group_number?.toString() || '');
+                                }}
+                                className="text-slate-400 hover:text-white h-7 px-2"
+                                title="Edit group assignment"
+                              >
+                                <Edit2 className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
