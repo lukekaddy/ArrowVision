@@ -114,9 +114,12 @@ export default function SmartScore() {
         const objectKey = response?.data?.object_key;
         if (objectKey) {
           console.log('[SmartScore] Found object_key:', objectKey);
-          const downloadRes = await client.storage.getDownloadUrl({
-            bucket_name: 'arrow-replays',
-            object_key: objectKey,
+          const currentTokenForDownload = tokenRef.current;
+          const downloadRes = await client.apiCall.invoke({
+            url: '/api/v1/replays/get-download-url',
+            method: 'POST',
+            data: { bucket_name: 'arrow-replays', object_key: objectKey },
+            ...(currentTokenForDownload ? { options: { headers: { Authorization: `Bearer ${currentTokenForDownload}` } } } : {}),
           });
 
           if (cancelled) return;

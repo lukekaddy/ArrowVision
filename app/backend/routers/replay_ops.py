@@ -1,4 +1,5 @@
 import logging
+import mimetypes
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -7,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from routers.custom_auth import get_current_custom_user, UserInfo
 from services.replay_ops import ReplayOpsService
+from services.storage import StorageService
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +32,21 @@ class FindReplayRequest(BaseModel):
 
 class ReplayResponse(BaseModel):
     object_key: Optional[str] = None
+
+
+class StorageUrlRequest(BaseModel):
+    bucket_name: str
+    object_key: str
+
+
+class UploadUrlResponse(BaseModel):
+    upload_url: str
+    expires_at: str = ""
+
+
+class DownloadUrlResponse(BaseModel):
+    download_url: str
+    expires_at: str = ""
 
 
 @router.post("/save")
@@ -113,4 +130,57 @@ async def get_replay(
         return ReplayResponse(object_key=object_key)
     except Exception as e:
         logger.error(f"Error fetching replay: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/get-upload-url", response_model=UploadUrlResponse)
+async def get_upload_url(
+    data: StorageUrlRequest,
+    current_user: UserInfo = Depends(get_current_custom_user),
+):
+    """Get a presigned upload URL for replay video storage.
+    
+    Uses server-side storage credentials, bypassing OIDC auth requirement.
+    """
+    try:
+        service = StorageService()
+        endpoint = f"/api/v1/infra/client/oss/buckets/{data.bucket_name}/objects/upload_url"
+        payload = {"expires_in": 0, "object_key": data.object_key}
+        result = await service._apost_oss_service(endpoint, payload)
+        return UploadUrlResponse(
+            upload_url=result.get("upload_url", ""),
+            expires_at=result.get("expires_at", ""),
+        )
+    except Exception as e:
+        logger.error(f"Error getting upload URL: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/get-download-url", response_model=DownloadUrlResponse)
+async def get_download_url(
+    data: StorageUrlRequest,
+    current_user: UserInfo = Depends(get_current_custom_user),
+):
+    """Get a presigned download URL for replay video retrieval.
+    
+    Uses server-side storage credentials, bypassing OIDC auth requirement.
+    """
+    try:
+        service = StorageService()
+        content_type, _ = mimetypes.guess_type(data.object_key)
+        if not content_type:
+            content_type = "application/octet-stream"
+        endpoint = f"/api/v1/infra/client/oss/buckets/{data.bucket_name}/objects/download_url"
+        payload = {
+            "content_type": content_type,
+            "expires_in": 0,
+            "object_key": data.object_key,
+        }
+        result = await service._apost_oss_service(endpoint, payload)
+        return DownloadUrlResponse(
+            download_url=result.get("download_url", ""),
+            expires_at=result.get("expires_at", ""),
+        )
+    except Exception as e:
+        logger.error(f"Error getting download URL: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

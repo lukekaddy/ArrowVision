@@ -397,11 +397,13 @@ export default function ReplayCamera() {
     });
 
     try {
-      // Step 1: Get a presigned upload URL (same pattern as TournamentCreate)
-      console.log('[ReplayCamera] Step 1: Getting upload URL...');
-      const uploadRes = await client.storage.getUploadUrl({
-        bucket_name: 'arrow-replays',
-        object_key: objectKey,
+      // Step 1: Get a presigned upload URL via custom backend endpoint (bypasses OIDC auth)
+      console.log('[ReplayCamera] Step 1: Getting upload URL via custom endpoint...');
+      const uploadRes = await client.apiCall.invoke({
+        url: '/api/v1/replays/get-upload-url',
+        method: 'POST',
+        data: { bucket_name: 'arrow-replays', object_key: objectKey },
+        ...(currentToken ? { options: { headers: { Authorization: `Bearer ${currentToken}` } } } : {}),
       });
       const uploadUrl = uploadRes?.data?.upload_url;
       console.log('[ReplayCamera] Got upload URL:', uploadUrl ? 'yes' : 'NO', uploadUrl?.substring(0, 80));
