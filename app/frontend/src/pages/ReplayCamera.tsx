@@ -56,7 +56,7 @@ export default function ReplayCamera() {
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>('idle');
   const [recordingStatus, setRecordingStatus] = useState<RecordingStatus>('idle');
   const [statusMessage, setStatusMessage] = useState('');
-  const [sensitivity, setSensitivity] = useState(0.08);
+  const [sensitivity, setSensitivity] = useState(0.03);
   const [currentVolume, setCurrentVolume] = useState(0);
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
