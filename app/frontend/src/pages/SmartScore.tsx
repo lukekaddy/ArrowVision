@@ -47,24 +47,24 @@ export default function SmartScore() {
   // Create a stable key for the current target context to force re-renders
   const targetKey = `${tournamentId}-${archerId}-${courseNumber}-${targetNumber}`;
 
-  // Counter to force re-fetch when navigating back to the same target
+  // Counter to force re-fetch (incremented only when we don't have a URL yet)
   const [fetchCounter, setFetchCounter] = useState(0);
+  const replayUrlRef = useRef<string | null>(null);
 
-  // Force re-fetch replay when page gains focus (e.g., navigating back from ReplayCamera)
+  // Keep ref in sync with state
   useEffect(() => {
-    const handleFocus = () => {
-      setFetchCounter(prev => prev + 1);
-    };
-    window.addEventListener('focus', handleFocus);
-    // Also trigger on visibility change (covers tab switching and app resume)
+    replayUrlRef.current = replayVideoUrl;
+  }, [replayVideoUrl]);
+
+  // Re-fetch replay when page gains focus ONLY if we don't already have a valid URL
+  useEffect(() => {
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible' && !replayUrlRef.current) {
         setFetchCounter(prev => prev + 1);
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => {
-      window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, []);
@@ -116,10 +116,10 @@ export default function SmartScore() {
           const url = downloadRes?.data?.download_url;
           console.log('[SmartScore] Download URL:', url);
           // Only set the URL if it's a valid non-empty string
+          // Note: Do NOT append cache-buster params - signed URLs already have unique signatures
+          // and extra query params can break the signature validation
           if (url && typeof url === 'string' && url.trim().length > 0) {
-            // Append cache-buster to avoid stale cached video after re-upload
-            const cacheBuster = `${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
-            setReplayVideoUrl(url + cacheBuster);
+            setReplayVideoUrl(url);
           }
         } else {
           console.log('[SmartScore] No object_key found in response');
@@ -300,12 +300,12 @@ export default function SmartScore() {
                   src={replayVideoUrl}
                   className="w-full aspect-video object-cover"
                   playsInline
-                  crossOrigin="anonymous"
                   preload="metadata"
                   onEnded={() => setIsPlaying(false)}
-                  onError={() => {
+                  onError={(e) => {
+                    const videoEl = e.currentTarget;
+                    console.error('[SmartScore] Video playback error:', videoEl.error?.code, videoEl.error?.message);
                     setIsPlaying(false);
-                    // Mark playback error without clearing the URL permanently
                     setVideoPlaybackError(true);
                   }}
                 />

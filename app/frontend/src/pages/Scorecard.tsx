@@ -542,7 +542,6 @@ export default function Scorecard() {
                         autoPlay
                         playsInline
                         preload="auto"
-                        crossOrigin="anonymous"
                         className="w-full rounded-lg"
                         onError={(e) => {
                           const videoEl = e.currentTarget;
