@@ -5,8 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
-from dependencies.auth import get_current_user
-from schemas.auth import UserResponse
+from routers.custom_auth import get_current_custom_user, UserInfo
 from services.tournament_ops import TournamentOpsService
 
 logger = logging.getLogger(__name__)
@@ -111,7 +110,7 @@ async def get_leaderboard(
 # ---------- Authenticated Routes ----------
 @router.get("/my-tournaments")
 async def get_my_tournaments(
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_custom_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get all tournaments the current authenticated user is registered for,
@@ -127,7 +126,7 @@ async def get_my_tournaments(
 @router.get("/archers/{tournament_id}")
 async def get_tournament_archers(
     tournament_id: int,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_custom_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get all archers for a tournament"""
@@ -142,7 +141,7 @@ async def get_tournament_archers(
 @router.post("/register-archer")
 async def register_archer(
     data: RegisterArcherRequest,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_custom_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Register an archer to a tournament"""
@@ -157,7 +156,7 @@ async def register_archer(
 @router.post("/submit-score")
 async def submit_score(
     data: SubmitScoreRequest,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_custom_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Submit a score for an archer"""
@@ -172,7 +171,7 @@ async def submit_score(
 @router.get("/scores/{tournament_id}")
 async def get_tournament_scores(
     tournament_id: int,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_custom_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get all scores for a tournament"""
@@ -188,7 +187,7 @@ async def get_tournament_scores(
 async def update_score(
     score_id: int,
     data: UpdateScoreRequest,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_custom_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a score (organizer dispute resolution)"""
@@ -209,7 +208,7 @@ async def update_score(
 @router.post("/export-results/{tournament_id}")
 async def export_results(
     tournament_id: int,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_custom_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Export tournament results"""
@@ -230,7 +229,7 @@ async def export_results(
 @router.post("/create-scorecard")
 async def create_scorecard(
     data: CreateScorecardRequest,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_custom_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a scoring template for a tournament"""
@@ -251,7 +250,7 @@ async def create_scorecard(
 
 @router.get("/scoring-templates")
 async def get_scoring_templates(
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_custom_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get all scoring templates for the current user"""
@@ -267,7 +266,7 @@ async def get_scoring_templates(
 async def update_scorecard(
     template_id: int,
     data: UpdateScorecardRequest,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_custom_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a scoring template"""
@@ -298,7 +297,7 @@ async def update_scorecard(
 @router.delete("/delete-scorecard/{template_id}")
 async def delete_scorecard(
     template_id: int,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: UserInfo = Depends(get_current_custom_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a scoring template"""

@@ -98,6 +98,48 @@ def decode_token(token: str) -> dict:
         )
 
 
+# ---------- Dependency for other routers ----------
+async def get_current_custom_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> "UserInfo":
+    """Reusable dependency: extract and validate the custom JWT, return UserInfo.
+
+    Import this in other routers that need custom-auth-based authentication:
+        from routers.custom_auth import get_current_custom_user
+    """
+    if not credentials or credentials.scheme.lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication credentials were not provided",
+        )
+
+    payload = decode_token(credentials.credentials)
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+        )
+
+    service = Custom_usersService(db)
+    user = await service.get_by_id(int(user_id))
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+
+    return UserInfo(
+        id=user.id,
+        email=user.email,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        phone=user.phone,
+        role=user.role,
+    )
+
+
 # ---------- Routes ----------
 @router.post("/register", response_model=AuthResponse, status_code=201)
 async def register(
