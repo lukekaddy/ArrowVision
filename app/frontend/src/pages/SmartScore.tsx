@@ -66,15 +66,24 @@ export default function SmartScore() {
         const aid = parseInt(archerId);
         const cn = parseInt(courseNumber);
         const tn = parseInt(targetNumber);
+        console.log('[SmartScore] Fetching replay:', { tid, aid, cn, tn });
         const response = await client.apiCall.invoke({
-          url: `/api/v1/replays/get?tournament_id=${tid}&archer_id=${aid}&course_number=${cn}&target_number=${tn}`,
-          method: 'GET',
+          url: '/api/v1/replays/find',
+          method: 'POST',
+          data: {
+            tournament_id: tid,
+            archer_id: aid,
+            course_number: cn,
+            target_number: tn,
+          },
         });
+        console.log('[SmartScore] Replay find response:', JSON.stringify(response?.data));
 
         if (cancelled) return;
 
         const objectKey = response?.data?.object_key;
         if (objectKey) {
+          console.log('[SmartScore] Found object_key:', objectKey);
           const downloadRes = await client.storage.getDownloadUrl({
             bucket_name: 'arrow-replays',
             object_key: objectKey,
@@ -83,14 +92,17 @@ export default function SmartScore() {
           if (cancelled) return;
 
           const url = downloadRes?.data?.download_url;
+          console.log('[SmartScore] Download URL:', url);
           // Only set the URL if it's a valid non-empty string
           if (url && typeof url === 'string' && url.trim().length > 0) {
             setReplayVideoUrl(url);
           }
+        } else {
+          console.log('[SmartScore] No object_key found in response');
         }
       } catch (err) {
         if (!cancelled) {
-          console.error('Error fetching replay:', err);
+          console.error('[SmartScore] Error fetching replay:', err);
         }
       } finally {
         if (!cancelled) {

@@ -92,19 +92,34 @@ export default function Scorecard() {
     const targets = selectedCourse?.targets || selectedTournament.num_targets || 10;
     const map: Record<number, string> = {};
 
+    console.log('[Scorecard] Checking replays for:', {
+      tournament_id: selectedTournament.id,
+      archer_id: selectedArcher.id,
+      course_number: courseNum,
+      targets,
+    });
+
     for (let t = 1; t <= targets; t++) {
       try {
         const res = await client.apiCall.invoke({
-          url: `/api/v1/replays/get?tournament_id=${selectedTournament.id}&archer_id=${selectedArcher.id}&course_number=${courseNum}&target_number=${t}`,
-          method: 'GET',
+          url: '/api/v1/replays/find',
+          method: 'POST',
+          data: {
+            tournament_id: selectedTournament.id,
+            archer_id: selectedArcher.id,
+            course_number: courseNum,
+            target_number: t,
+          },
         });
+        console.log(`[Scorecard] Replay check target ${t}:`, JSON.stringify(res?.data));
         if (res?.data?.object_key) {
           map[t] = res.data.object_key;
         }
-      } catch {
-        // No replay for this target
+      } catch (err) {
+        console.error(`[Scorecard] Replay check target ${t} error:`, err);
       }
     }
+    console.log('[Scorecard] Final replay map:', map);
     setReplayMap(map);
   }, [selectedTournament, selectedArcher, selectedCourse, client]);
 
