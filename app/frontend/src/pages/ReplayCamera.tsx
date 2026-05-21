@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Video, Mic, MicOff, AlertCircle, CheckCircle, Loader2, Volume2, Crosshair } from 'lucide-react';
+import { Video, AlertCircle, CheckCircle, Loader2, Eye, EyeOff, Crosshair } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 
 interface Tournament {
@@ -36,6 +36,10 @@ const MIN_CLIP_SIZE_BYTES = 50 * 1024;
 const TRIGGER_COOLDOWN_MS = 8000;
 // Post-trigger recording duration in ms
 const POST_TRIGGER_DURATION_MS = 3000;
+// Motion detection interval in ms
+const MOTION_DETECT_INTERVAL_MS = 150;
+// Pixel intensity change threshold (0-255) to consider a pixel as "changed"
+const PIXEL_CHANGE_THRESHOLD = 30;
 
 export default function ReplayCamera() {
   const { user, token } = useAuth();
@@ -43,12 +47,12 @@ export default function ReplayCamera() {
 
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const animFrameRef = useRef<number>(0);
+  const motionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prevFrameDataRef = useRef<Uint8Array | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const cooldownRef = useRef<boolean>(false);
   const triggerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -66,8 +70,8 @@ export default function ReplayCamera() {
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>('idle');
   const [recordingStatus, setRecordingStatus] = useState<RecordingStatus>('idle');
   const [statusMessage, setStatusMessage] = useState('');
-  const [sensitivity, setSensitivity] = useState(0.03);
-  const [currentVolume, setCurrentVolume] = useState(0);
+  const [sensitivity, setSensitivity] = useState(0.05); // 5% of pixels must change
+  const [currentMotionLevel, setCurrentMotionLevel] = useState(0);
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
   const [coursesConfig, setCoursesConfig] = useState<CourseConfig[]>([]);
@@ -105,9 +109,9 @@ export default function ReplayCamera() {
   }, []);
 
   const stopEverything = () => {
-    if (animFrameRef.current) {
-      cancelAnimationFrame(animFrameRef.current);
-      animFrameRef.current = 0;
+    if (motionIntervalRef.current) {
+      clearInterval(motionIntervalRef.current);
+      motionIntervalRef.current = null;
     }
     if (dataPollingRef.current) {
       clearInterval(dataPollingRef.current);
@@ -120,10 +124,6 @@ export default function ReplayCamera() {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     }
-    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-      audioContextRef.current.close();
-      audioContextRef.current = null;
-    }
     if (wakeLockRef.current) {
       wakeLockRef.current.release();
       wakeLockRef.current = null;
@@ -132,6 +132,7 @@ export default function ReplayCamera() {
       clearTimeout(triggerTimeoutRef.current);
       triggerTimeoutRef.current = null;
     }
+    prevFrameDataRef.current = null;
     isListeningRef.current = false;
     isRecordingClipRef.current = false;
   };
@@ -208,11 +209,12 @@ export default function ReplayCamera() {
 
       await requestWakeLock();
       startRecording(stream);
-      startAudioDetection(stream);
+      // Wait for video to have dimensions before starting motion detection
+      setTimeout(() => startMotionDetection(), 500);
     } catch (err) {
       console.error('Camera error:', err);
       setCameraStatus('error');
-      setStatusMessage('Camera/microphone access denied. Please allow permissions and try again.');
+      setStatusMessage('Camera access denied. Please allow permissions and try again.');
     }
   };
 
@@ -270,53 +272,84 @@ export default function ReplayCamera() {
     isListeningRef.current = true;
   };
 
-  // Use a ref for sensitivity so the audio detection loop always reads the latest value
+  // Use a ref for sensitivity so the motion detection loop always reads the latest value
   const sensitivityRef = useRef(sensitivity);
   useEffect(() => { sensitivityRef.current = sensitivity; }, [sensitivity]);
 
-  const startAudioDetection = async (stream: MediaStream) => {
-    const audioContext = new AudioContext();
-    // iOS Safari requires resume() after user gesture
-    if (audioContext.state === 'suspended') {
-      await audioContext.resume();
+  const startMotionDetection = () => {
+    // Clear any existing interval
+    if (motionIntervalRef.current) {
+      clearInterval(motionIntervalRef.current);
     }
-    const source = audioContext.createMediaStreamSource(stream);
-    const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 2048;
-    source.connect(analyser);
 
-    audioContextRef.current = audioContext;
-    analyserRef.current = analyser;
+    motionIntervalRef.current = setInterval(() => {
+      detectMotion();
+    }, MOTION_DETECT_INTERVAL_MS);
+  };
 
-    const dataArray = new Uint8Array(analyser.fftSize);
+  const detectMotion = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || video.readyState < 2) return;
 
-    const detectLoop = () => {
-      if (!analyserRef.current) return;
-      analyserRef.current.getByteTimeDomainData(dataArray);
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
 
-      // Calculate RMS volume
-      let sum = 0;
-      for (let i = 0; i < dataArray.length; i++) {
-        const val = (dataArray[i] - 128) / 128;
-        sum += val * val;
+    // Set canvas to a reduced resolution for performance
+    const analysisWidth = 160;
+    const analysisHeight = 120;
+    canvas.width = analysisWidth;
+    canvas.height = analysisHeight;
+
+    // Draw current video frame to canvas
+    ctx.drawImage(video, 0, 0, analysisWidth, analysisHeight);
+
+    // Define detection zone: center 60% of the frame
+    const zoneX = Math.floor(analysisWidth * 0.2);
+    const zoneY = Math.floor(analysisHeight * 0.2);
+    const zoneW = Math.floor(analysisWidth * 0.6);
+    const zoneH = Math.floor(analysisHeight * 0.6);
+
+    // Get pixel data from detection zone only
+    const imageData = ctx.getImageData(zoneX, zoneY, zoneW, zoneH);
+    const pixels = imageData.data; // RGBA array
+
+    // Convert to grayscale array for comparison
+    const totalPixels = zoneW * zoneH;
+    const currentGrayscale = new Uint8Array(totalPixels);
+    for (let i = 0; i < totalPixels; i++) {
+      const offset = i * 4;
+      // Fast grayscale: (R + G + B) / 3
+      currentGrayscale[i] = Math.round((pixels[offset] + pixels[offset + 1] + pixels[offset + 2]) / 3);
+    }
+
+    const prevFrame = prevFrameDataRef.current;
+    if (prevFrame && prevFrame.length === totalPixels) {
+      // Compare with previous frame
+      let changedPixels = 0;
+      for (let i = 0; i < totalPixels; i++) {
+        const diff = Math.abs(currentGrayscale[i] - prevFrame[i]);
+        if (diff > PIXEL_CHANGE_THRESHOLD) {
+          changedPixels++;
+        }
       }
-      const rms = Math.sqrt(sum / dataArray.length);
-      setCurrentVolume(rms);
 
-      // Check for impact — use ref so we always read latest sensitivity
+      const changeRatio = changedPixels / totalPixels;
+      setCurrentMotionLevel(changeRatio);
+
+      // Check if motion exceeds threshold
       // CRITICAL: Also check isRecordingClipRef to prevent triggers during clip assembly
-      if (isListeningRef.current && !cooldownRef.current && !isRecordingClipRef.current && rms > sensitivityRef.current) {
+      if (isListeningRef.current && !cooldownRef.current && !isRecordingClipRef.current && changeRatio > sensitivityRef.current) {
         triggerImpact();
       }
+    }
 
-      animFrameRef.current = requestAnimationFrame(detectLoop);
-    };
-
-    animFrameRef.current = requestAnimationFrame(detectLoop);
+    // Store current frame for next comparison
+    prevFrameDataRef.current = currentGrayscale;
   };
 
   const triggerImpact = () => {
-    // Double-check the recording clip lock to prevent rapid double-triggers from arrow vibrations
+    // Double-check the recording clip lock to prevent rapid double-triggers
     if (isRecordingClipRef.current || cooldownRef.current) {
       console.log('[ReplayCamera] Trigger ignored — clip recording in progress or cooldown active');
       return;
@@ -327,9 +360,9 @@ export default function ReplayCamera() {
     cooldownRef.current = true;
     isListeningRef.current = false;
     setRecordingStatus('triggered');
-    setStatusMessage('Impact detected! Capturing clip...');
+    setStatusMessage('Motion detected! Capturing clip...');
 
-    console.log('[ReplayCamera] Impact triggered. Recording post-impact for', POST_TRIGGER_DURATION_MS, 'ms');
+    console.log('[ReplayCamera] Motion triggered. Recording post-impact for', POST_TRIGGER_DURATION_MS, 'ms');
 
     // Wait for post-impact footage. This timeout MUST NOT be cancelled by anything
     // except stopEverything() (unmount/stop button).
@@ -410,7 +443,7 @@ export default function ReplayCamera() {
         `[ReplayCamera] Clip too small (${clipBlob.size} bytes / ${(clipBlob.size / 1024).toFixed(1)} KB). ` +
         `Minimum required: ${MIN_CLIP_SIZE_BYTES / 1024} KB. Likely corrupted — skipping upload.`
       );
-      setStatusMessage(`Clip too small to be valid (${(clipBlob.size / 1024).toFixed(0)} KB). Impact may have been too brief. Try again.`);
+      setStatusMessage(`Clip too small to be valid (${(clipBlob.size / 1024).toFixed(0)} KB). Try again.`);
       setRecordingStatus('error');
       toast.error('Clip discarded — too small', {
         description: `Only ${(clipBlob.size / 1024).toFixed(0)} KB captured. Ensure camera has clear view and try again.`,
@@ -556,8 +589,10 @@ export default function ReplayCamera() {
     // Release the clip recording lock
     isRecordingClipRef.current = false;
 
+    // Reset previous frame data so we don't get a false trigger from the frame gap
+    prevFrameDataRef.current = null;
+
     // Keep cooldown active for a bit longer to prevent immediate re-triggers
-    // from residual arrow vibrations
     setTimeout(() => {
       cooldownRef.current = false;
       console.log('[ReplayCamera] Cooldown released. Ready for next trigger.');
@@ -613,13 +648,21 @@ export default function ReplayCamera() {
 
   const getStatusLabel = () => {
     switch (recordingStatus) {
-      case 'listening': return 'Listening';
+      case 'listening': return 'Watching';
       case 'triggered': return 'Triggered!';
       case 'uploading': return 'Uploading';
       case 'success': return 'Saved';
       case 'error': return 'Error';
       default: return 'Idle';
     }
+  };
+
+  const getSensitivityLabel = () => {
+    if (sensitivity < 0.02) return 'Ultra';
+    if (sensitivity < 0.04) return 'High';
+    if (sensitivity < 0.08) return 'Medium';
+    if (sensitivity < 0.15) return 'Low';
+    return 'Very Low';
   };
 
   return (
@@ -729,6 +772,9 @@ export default function ReplayCamera() {
           </div>
         )}
 
+        {/* Hidden canvas for motion detection frame analysis */}
+        <canvas ref={canvasRef} className="hidden" />
+
         {/* Camera View */}
         {cameraStatus !== 'idle' && (
           <div className="relative rounded-xl overflow-hidden bg-black aspect-video mb-4">
@@ -775,15 +821,26 @@ export default function ReplayCamera() {
                   T{targetNumber} {selectedArcher ? `• ${selectedArcher.archer_name}` : ''}
                 </div>
 
-                {/* Volume meter */}
+                {/* Detection zone indicator (center 60%) */}
+                <div className="absolute inset-0 pointer-events-none">
+                  <div
+                    className="absolute border border-emerald-400/30 rounded"
+                    style={{ top: '20%', left: '20%', width: '60%', height: '60%' }}
+                  />
+                </div>
+
+                {/* Motion level meter */}
                 <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2">
-                  <Volume2 className="h-4 w-4 text-white/70" />
+                  <Eye className="h-4 w-4 text-white/70" />
                   <div className="flex-1 h-2 bg-white/20 rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all duration-75 ${currentVolume > sensitivity ? 'bg-amber-400' : 'bg-emerald-400'}`}
-                      style={{ width: `${Math.min(currentVolume * 500, 100)}%` }}
+                      className={`h-full rounded-full transition-all duration-150 ${currentMotionLevel > sensitivity ? 'bg-amber-400' : 'bg-emerald-400'}`}
+                      style={{ width: `${Math.min(currentMotionLevel * 1000, 100)}%` }}
                     />
                   </div>
+                  <span className="text-white/50 text-xs min-w-[3rem] text-right">
+                    {(currentMotionLevel * 100).toFixed(1)}%
+                  </span>
                 </div>
               </>
             )}
@@ -822,34 +879,34 @@ export default function ReplayCamera() {
           </Button>
         )}
 
-        {/* Sensitivity Control */}
+        {/* Motion Sensitivity Control */}
         {cameraStatus === 'active' && (
           <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50 mb-4">
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
-                {isListeningRef.current ? <Mic className="h-4 w-4 text-emerald-400" /> : <MicOff className="h-4 w-4 text-slate-500" />}
-                Sound Sensitivity
+                {isListeningRef.current ? <Eye className="h-4 w-4 text-emerald-400" /> : <EyeOff className="h-4 w-4 text-slate-500" />}
+                Motion Sensitivity
               </label>
               <span className="text-xs text-slate-400">
-                {sensitivity < 0.01 ? 'Ultra' : sensitivity < 0.03 ? 'Max' : sensitivity < 0.08 ? 'High' : sensitivity < 0.2 ? 'Medium' : 'Low'}
+                {getSensitivityLabel()}
                 {' '}({(sensitivity * 100).toFixed(1)}%)
               </span>
             </div>
             <input
               type="range"
-              min="0.003"
-              max="0.5"
-              step="0.001"
+              min="0.01"
+              max="0.25"
+              step="0.005"
               value={sensitivity}
               onChange={(e) => setSensitivity(parseFloat(e.target.value))}
               className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
             />
             <div className="flex justify-between text-xs text-slate-500 mt-1">
-              <span>Ultra Sensitive (0.3%)</span>
-              <span>Less Sensitive</span>
+              <span>More Sensitive (1%)</span>
+              <span>Less Sensitive (25%)</span>
             </div>
             <p className="text-xs text-slate-500 mt-2">
-              Tip: For arrow impacts outdoors, try Ultra or Max. Use &quot;Capture Now&quot; button as backup.
+              Detects visual changes in center 60% of frame. Lower = more sensitive to small movements like arrows hitting the target.
             </p>
           </div>
         )}
@@ -860,13 +917,13 @@ export default function ReplayCamera() {
             <h3 className="text-white font-semibold mb-3">How it works</h3>
             <ol className="text-slate-400 text-sm space-y-2 list-decimal list-inside">
               <li>Tap &quot;Start Camera&quot; above to begin recording</li>
-              <li>Point camera at the target — audio is continuously monitored</li>
-              <li>When an arrow impact is detected, a 6-second clip is saved</li>
+              <li>Point camera at the target — motion in the center zone is monitored</li>
+              <li>When an arrow impact is visually detected, a 6-second clip is saved</li>
               <li>Sign in and select tournament/archer to auto-upload clips</li>
               <li>Target number auto-advances after each successful save</li>
             </ol>
             <p className="text-slate-500 text-xs mt-3">
-              Tip: Adjust sensitivity slider if triggers are too frequent or too rare.
+              Tip: Keep the camera steady and aimed at the target face. The detection zone (center 60%) should cover the target. Use &quot;Capture Now&quot; as a manual backup.
             </p>
           </div>
         )}
