@@ -29,6 +29,14 @@ interface Archer {
 type CameraStatus = 'idle' | 'requesting' | 'active' | 'error';
 type RecordingStatus = 'idle' | 'listening' | 'triggered' | 'uploading' | 'success' | 'error';
 
+// Minimum clip size in bytes (50KB) - anything smaller is likely corrupted/empty
+const MIN_CLIP_SIZE_BYTES = 50 * 1024;
+// Cooldown duration in ms after a trigger before new triggers are accepted
+// Must be longer than post-trigger recording (3s) + processing time
+const TRIGGER_COOLDOWN_MS = 8000;
+// Post-trigger recording duration in ms
+const POST_TRIGGER_DURATION_MS = 3000;
+
 export default function ReplayCamera() {
   const { user, token } = useAuth();
   const client = getClient();
@@ -45,6 +53,8 @@ export default function ReplayCamera() {
   const cooldownRef = useRef<boolean>(false);
   const triggerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isListeningRef = useRef<boolean>(false);
+  // Lock that prevents ANY new trigger processing while a clip is being recorded/assembled/uploaded
+  const isRecordingClipRef = useRef<boolean>(false);
   // Refs to hold current values for async closures (fixes stale state in uploads)
   const targetNumberRef = useRef<number>(1);
   const selectedTournamentRef = useRef<Tournament | null>(null);
@@ -123,6 +133,7 @@ export default function ReplayCamera() {
       triggerTimeoutRef.current = null;
     }
     isListeningRef.current = false;
+    isRecordingClipRef.current = false;
   };
 
   const requestWakeLock = async () => {
@@ -230,9 +241,9 @@ export default function ReplayCamera() {
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) {
         chunksRef.current.push(e.data);
-        // Keep only last 10 seconds worth of chunks
-        if (chunksRef.current.length > 10) {
-          chunksRef.current = chunksRef.current.slice(-10);
+        // Keep only last 12 seconds worth of chunks (extra buffer for safety)
+        if (chunksRef.current.length > 12) {
+          chunksRef.current = chunksRef.current.slice(-12);
         }
       }
     };
@@ -293,7 +304,8 @@ export default function ReplayCamera() {
       setCurrentVolume(rms);
 
       // Check for impact — use ref so we always read latest sensitivity
-      if (isListeningRef.current && !cooldownRef.current && rms > sensitivityRef.current) {
+      // CRITICAL: Also check isRecordingClipRef to prevent triggers during clip assembly
+      if (isListeningRef.current && !cooldownRef.current && !isRecordingClipRef.current && rms > sensitivityRef.current) {
         triggerImpact();
       }
 
@@ -304,20 +316,33 @@ export default function ReplayCamera() {
   };
 
   const triggerImpact = () => {
+    // Double-check the recording clip lock to prevent rapid double-triggers from arrow vibrations
+    if (isRecordingClipRef.current || cooldownRef.current) {
+      console.log('[ReplayCamera] Trigger ignored — clip recording in progress or cooldown active');
+      return;
+    }
+
+    // Lock everything immediately
+    isRecordingClipRef.current = true;
     cooldownRef.current = true;
     isListeningRef.current = false;
     setRecordingStatus('triggered');
     setStatusMessage('Impact detected! Capturing clip...');
 
-    // Wait 3 more seconds to capture post-impact footage
+    console.log('[ReplayCamera] Impact triggered. Recording post-impact for', POST_TRIGGER_DURATION_MS, 'ms');
+
+    // Wait for post-impact footage. This timeout MUST NOT be cancelled by anything
+    // except stopEverything() (unmount/stop button).
     triggerTimeoutRef.current = setTimeout(() => {
+      console.log('[ReplayCamera] Post-trigger period complete. Generating clip...');
       generateClip();
-    }, 3000);
+    }, POST_TRIGGER_DURATION_MS);
   };
 
   const generateClip = async () => {
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state === 'inactive') {
+      console.warn('[ReplayCamera] generateClip called but recorder is inactive');
       resetAfterClip();
       return;
     }
@@ -328,31 +353,72 @@ export default function ReplayCamera() {
       dataPollingRef.current = null;
     }
 
+    // Request final data chunk before stopping
+    try {
+      if (recorder.state === 'recording') {
+        recorder.requestData();
+      }
+    } catch {
+      // May throw on some browsers
+    }
+
+    // Small delay to allow the final ondataavailable to fire
+    await new Promise(resolve => setTimeout(resolve, 200));
+
     // Wait for the recorder to fully stop and flush remaining data
     await new Promise<void>((resolve) => {
       recorder.onstop = () => resolve();
-      // Request any final data before stopping
       try {
-        if (recorder.state === 'recording') {
-          recorder.requestData();
-        }
+        recorder.stop();
       } catch {
-        // May throw on some browsers
+        // If stop fails, resolve anyway
+        resolve();
       }
-      recorder.stop();
     });
 
     // Take the last 6 seconds of chunks (3 before trigger + 3 after)
+    const totalChunks = chunksRef.current.length;
     const clipChunks = chunksRef.current.slice(-6);
+    
+    console.log('[ReplayCamera] Clip generation:', {
+      totalChunksInBuffer: totalChunks,
+      chunksUsedForClip: clipChunks.length,
+      chunkSizes: clipChunks.map(c => c.size),
+    });
+
     if (clipChunks.length === 0) {
-      setStatusMessage('No video data captured.');
+      console.error('[ReplayCamera] No video data captured — zero chunks available');
+      setStatusMessage('No video data captured. Try again.');
       setRecordingStatus('error');
-      resetAfterClip();
+      setTimeout(() => resetAfterClip(), 3000);
       return;
     }
 
     const mimeType = getSupportedMimeType() || 'video/mp4';
     const clipBlob = new Blob(clipChunks, { type: mimeType });
+
+    console.log('[ReplayCamera] Clip blob assembled:', {
+      blobSize: clipBlob.size,
+      blobSizeKB: (clipBlob.size / 1024).toFixed(1) + ' KB',
+      mimeType: clipBlob.type,
+      numChunks: clipChunks.length,
+    });
+
+    // Validate minimum clip size — too small means corrupted/empty video
+    if (clipBlob.size < MIN_CLIP_SIZE_BYTES) {
+      console.warn(
+        `[ReplayCamera] Clip too small (${clipBlob.size} bytes / ${(clipBlob.size / 1024).toFixed(1)} KB). ` +
+        `Minimum required: ${MIN_CLIP_SIZE_BYTES / 1024} KB. Likely corrupted — skipping upload.`
+      );
+      setStatusMessage(`Clip too small to be valid (${(clipBlob.size / 1024).toFixed(0)} KB). Impact may have been too brief. Try again.`);
+      setRecordingStatus('error');
+      toast.error('Clip discarded — too small', {
+        description: `Only ${(clipBlob.size / 1024).toFixed(0)} KB captured. Ensure camera has clear view and try again.`,
+        duration: 5000,
+      });
+      setTimeout(() => resetAfterClip(), 3000);
+      return;
+    }
 
     // Upload if context is set — use refs for current values
     if (selectedTournamentRef.current && selectedArcherRef.current) {
@@ -391,6 +457,7 @@ export default function ReplayCamera() {
     console.log('[ReplayCamera] Starting upload:', {
       objectKey,
       blobSize: clipBlob.size,
+      blobSizeKB: (clipBlob.size / 1024).toFixed(1) + ' KB',
       blobType: clipBlob.type,
       tournamentId: currentTournament!.id,
       archerId: currentArcher!.id,
@@ -486,7 +553,16 @@ export default function ReplayCamera() {
   };
 
   const resetAfterClip = () => {
-    cooldownRef.current = false;
+    // Release the clip recording lock
+    isRecordingClipRef.current = false;
+
+    // Keep cooldown active for a bit longer to prevent immediate re-triggers
+    // from residual arrow vibrations
+    setTimeout(() => {
+      cooldownRef.current = false;
+      console.log('[ReplayCamera] Cooldown released. Ready for next trigger.');
+    }, TRIGGER_COOLDOWN_MS - POST_TRIGGER_DURATION_MS);
+
     // Restart recording if stream is still active
     if (streamRef.current && streamRef.current.active) {
       startRecording(streamRef.current);
