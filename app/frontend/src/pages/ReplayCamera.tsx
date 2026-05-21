@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Video, Mic, MicOff, AlertCircle, CheckCircle, Loader2, Volume2 } from 'lucide-react';
+import { Video, Mic, MicOff, AlertCircle, CheckCircle, Loader2, Volume2, Crosshair } from 'lucide-react';
 
 interface Tournament {
   id: number;
@@ -44,12 +44,17 @@ export default function ReplayCamera() {
   const cooldownRef = useRef<boolean>(false);
   const triggerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isListeningRef = useRef<boolean>(false);
+  // Refs to hold current values for async closures (fixes stale state in uploads)
+  const targetNumberRef = useRef<number>(1);
+  const selectedTournamentRef = useRef<Tournament | null>(null);
+  const selectedArcherRef = useRef<Archer | null>(null);
+  const selectedCourseRef = useRef<CourseConfig | null>(null);
 
   // State
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>('idle');
   const [recordingStatus, setRecordingStatus] = useState<RecordingStatus>('idle');
   const [statusMessage, setStatusMessage] = useState('');
-  const [sensitivity, setSensitivity] = useState(0.15);
+  const [sensitivity, setSensitivity] = useState(0.08);
   const [currentVolume, setCurrentVolume] = useState(0);
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
@@ -59,6 +64,12 @@ export default function ReplayCamera() {
   const [selectedArcher, setSelectedArcher] = useState<Archer | null>(null);
   const [targetNumber, setTargetNumber] = useState(1);
   const [clipCount, setClipCount] = useState(0);
+
+  // Keep refs in sync with state (so async closures always get current values)
+  useEffect(() => { targetNumberRef.current = targetNumber; }, [targetNumber]);
+  useEffect(() => { selectedTournamentRef.current = selectedTournament; }, [selectedTournament]);
+  useEffect(() => { selectedArcherRef.current = selectedArcher; }, [selectedArcher]);
+  useEffect(() => { selectedCourseRef.current = selectedCourse; }, [selectedCourse]);
 
   // Fetch tournaments on mount (only if logged in)
   useEffect(() => {
@@ -245,6 +256,10 @@ export default function ReplayCamera() {
     isListeningRef.current = true;
   };
 
+  // Use a ref for sensitivity so the audio detection loop always reads the latest value
+  const sensitivityRef = useRef(sensitivity);
+  useEffect(() => { sensitivityRef.current = sensitivity; }, [sensitivity]);
+
   const startAudioDetection = async (stream: MediaStream) => {
     const audioContext = new AudioContext();
     // iOS Safari requires resume() after user gesture
@@ -274,8 +289,8 @@ export default function ReplayCamera() {
       const rms = Math.sqrt(sum / dataArray.length);
       setCurrentVolume(rms);
 
-      // Check for impact
-      if (isListeningRef.current && !cooldownRef.current && rms > sensitivity) {
+      // Check for impact — use ref so we always read latest sensitivity
+      if (isListeningRef.current && !cooldownRef.current && rms > sensitivityRef.current) {
         triggerImpact();
       }
 
@@ -336,8 +351,8 @@ export default function ReplayCamera() {
     const mimeType = getSupportedMimeType() || 'video/mp4';
     const clipBlob = new Blob(clipChunks, { type: mimeType });
 
-    // Upload if context is set
-    if (selectedTournament && selectedArcher) {
+    // Upload if context is set — use refs for current values
+    if (selectedTournamentRef.current && selectedArcherRef.current) {
       await uploadClip(clipBlob);
     } else {
       setStatusMessage('Clip captured but no tournament/archer selected. Skipping upload.');
@@ -358,11 +373,16 @@ export default function ReplayCamera() {
     setRecordingStatus('uploading');
     setStatusMessage('Uploading replay...');
 
-    const courseNum = selectedCourse?.course || 1;
-    const objectKey = `replays/${selectedTournament!.id}/${selectedArcher!.id}/course${courseNum}_target${targetNumber}.mp4`;
+    // Read current values from refs to avoid stale closure issues
+    const currentTarget = targetNumberRef.current;
+    const currentTournament = selectedTournamentRef.current;
+    const currentArcher = selectedArcherRef.current;
+    const currentCourse = selectedCourseRef.current;
+    const courseNum = currentCourse?.course || 1;
+    const objectKey = `replays/${currentTournament!.id}/${currentArcher!.id}/course${courseNum}_target${currentTarget}.mp4`;
 
     try {
-      const file = new File([clipBlob], `course${courseNum}_target${targetNumber}.mp4`, { type: clipBlob.type });
+      const file = new File([clipBlob], `course${courseNum}_target${currentTarget}.mp4`, { type: clipBlob.type });
 
       await client.storage.upload({
         bucket_name: 'arrow-replays',
@@ -375,23 +395,23 @@ export default function ReplayCamera() {
         url: '/api/v1/replays/save',
         method: 'POST',
         data: {
-          tournament_id: selectedTournament!.id,
-          archer_id: selectedArcher!.id,
+          tournament_id: currentTournament!.id,
+          archer_id: currentArcher!.id,
           course_number: courseNum,
-          target_number: targetNumber,
+          target_number: currentTarget,
           object_key: objectKey,
         },
         ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
       });
 
       setRecordingStatus('success');
-      setStatusMessage(`✓ Target ${targetNumber} replay saved!`);
+      setStatusMessage(`✓ Target ${currentTarget} replay saved!`);
       setClipCount(prev => prev + 1);
 
       // Auto-increment target
-      const maxTargets = selectedCourse?.targets || 20;
-      if (targetNumber < maxTargets) {
-        setTargetNumber(prev => prev + 1);
+      const maxTargets = currentCourse?.targets || 20;
+      if (currentTarget < maxTargets) {
+        setTargetNumber(currentTarget + 1);
       }
 
       setTimeout(() => resetAfterClip(), 2000);
@@ -653,6 +673,17 @@ export default function ReplayCamera() {
           </div>
         )}
 
+        {/* MANUAL CAPTURE BUTTON — always visible when camera active and listening */}
+        {cameraStatus === 'active' && recordingStatus === 'listening' && (
+          <Button
+            onClick={triggerImpact}
+            className="w-full h-20 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xl font-bold rounded-xl mb-4 shadow-lg shadow-amber-500/30 flex items-center justify-center gap-3 active:scale-95 transition-transform"
+          >
+            <Crosshair className="h-8 w-8" />
+            CAPTURE NOW
+          </Button>
+        )}
+
         {/* Sensitivity Control */}
         {cameraStatus === 'active' && (
           <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50 mb-4">
@@ -661,32 +692,28 @@ export default function ReplayCamera() {
                 {isListeningRef.current ? <Mic className="h-4 w-4 text-emerald-400" /> : <MicOff className="h-4 w-4 text-slate-500" />}
                 Sound Sensitivity
               </label>
-              <span className="text-xs text-slate-400">{(sensitivity * 100).toFixed(0)}%</span>
+              <span className="text-xs text-slate-400">
+                {sensitivity < 0.01 ? 'Ultra' : sensitivity < 0.03 ? 'Max' : sensitivity < 0.08 ? 'High' : sensitivity < 0.2 ? 'Medium' : 'Low'}
+                {' '}({(sensitivity * 100).toFixed(1)}%)
+              </span>
             </div>
             <input
               type="range"
-              min="0.02"
+              min="0.003"
               max="0.5"
-              step="0.01"
+              step="0.001"
               value={sensitivity}
               onChange={(e) => setSensitivity(parseFloat(e.target.value))}
               className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
             />
             <div className="flex justify-between text-xs text-slate-500 mt-1">
-              <span>Very Sensitive</span>
+              <span>Ultra Sensitive (0.3%)</span>
               <span>Less Sensitive</span>
             </div>
+            <p className="text-xs text-slate-500 mt-2">
+              Tip: For arrow impacts outdoors, try Ultra or Max. Use &quot;Capture Now&quot; button as backup.
+            </p>
           </div>
-        )}
-
-        {/* Manual Trigger Button */}
-        {cameraStatus === 'active' && recordingStatus === 'listening' && (
-          <Button
-            onClick={triggerImpact}
-            className="w-full h-14 bg-amber-500 hover:bg-amber-600 text-white text-lg font-bold rounded-xl"
-          >
-            Manual Trigger
-          </Button>
         )}
 
         {/* Instructions - shown when camera is idle */}
