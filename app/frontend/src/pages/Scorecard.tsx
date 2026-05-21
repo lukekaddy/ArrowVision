@@ -537,12 +537,19 @@ export default function Scorecard() {
                     )}
                     {replayModalState === 'ready' && replayModalUrl && (
                       <video
+                        key={`replay-${replayModalTarget}-${replayModalUrl}`}
                         src={replayModalUrl}
                         controls
                         autoPlay
                         playsInline
                         preload="auto"
                         className="w-full rounded-lg"
+                        ref={(el) => {
+                          // Belt-and-suspenders: explicitly load in webview/iframe contexts
+                          if (el) {
+                            el.load();
+                          }
+                        }}
                         onError={(e) => {
                           const videoEl = e.currentTarget;
                           const mediaError = videoEl.error;
