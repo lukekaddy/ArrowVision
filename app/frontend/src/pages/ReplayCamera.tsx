@@ -165,13 +165,23 @@ export default function ReplayCamera() {
       }
       streamRef.current = stream;
 
+      // Set status to 'active' FIRST so the <video> element renders in the DOM
+      setCameraStatus('active');
+
+      // Wait a tick for React to render the video element
+      await new Promise(resolve => setTimeout(resolve, 50));
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        // iOS Safari needs explicit play after srcObject assignment
+        try {
+          await videoRef.current.play();
+        } catch {
+          // play() can fail silently on some browsers, video should still display
+        }
       }
 
       await requestWakeLock();
-      setCameraStatus('active');
       startRecording(stream);
       startAudioDetection(stream);
     } catch (err) {
