@@ -1,0 +1,55 @@
+init SS ClickMagic ✅
+D1_ofMYh.js:979 Replay is disabled because neither `replaysSessionSampleRate` nor `replaysOnErrorSampleRate` are set.
+D1_ofMYh.js:979 Please ensure Intercom is setup and running on client-side!
+D1_ofMYh.js:979 [WebSocket] Joining chat: 6c1cb3d678a543449ec1f10e0da5170c | connected: false | total_rooms: 1
+frame-modern.0fec1160.js:1 [Intercom] Launcher is disabled in settings or current page does not match display conditions
+D1_ofMYh.js:979 [WebSocket] Connected to server
+D1_ofMYh.js:979 [extractChatIdFromHostname] 
+Object
+D1_ofMYh.js:979 [extractChatIdFromHostname] sandboxMatch: 6c1cb3d678a543449ec1f10e0da5170c
+appPlugins-atoms-pro…1774333923027.js:32 tw-to-css loaded
+client:536 WebSocket connection to 'wss://8aksn-6c1cb3d…-preview.app.atoms.dev/?token=p6rw27l22oSu' failed: 
+client:536 WebSocket connection to 'wss://localhost:3000/?token=p6rw27l22oSu' failed: 
+client:512 [vite] failed to connect to websocket.
+your current setup:
+  (browser) 8aksn-6c1cb3d678a543449ec1f10e0da5170c-preview.app.atoms.dev/ <--[HTTP]--> localhost:3000/ (server)
+  (browser) 8aksn-6c1cb3d678a543449ec1f10e0da5170c-preview.app.atoms.dev:/ <--[WebSocket (failing)]--> localhost:3000/ (server)
+Check out your Vite / network configuration and https://vite.dev/config/server-options.html#server-hmr .
+appPlugins-atoms-pro…1774333923027.js:32 🔧 DEBUG: Starting to load runtime config...
+appPlugins-atoms-pro…1774333923027.js:32 [routes-scanner] notifyParentWindow 
+Object
+8aksn-6c1cb3d678a543…ms.dev/api/config:1 
+ Failed to load resource: the server responded with a status of 404 ()
+appPlugins-atoms-pro…1774333923027.js:32 🔧 DEBUG: Config fetch failed with status: 404
+appPlugins-atoms-pro…1774333923027.js:32 🔧 DEBUG: Config loading finished, configLoading set to false
+appPlugins-atoms-pro…1774333923027.js:32 Runtime configuration loaded successfully
+6c1cb3d…:1 Access to fetch at 'https://8aksn-6c1cb3d…-preview.app.atoms.dev/' from origin 'https://atoms.dev' has been blocked by CORS policy: The value of the 'Access-Control-Allow-Origin' header in the response must not be the wildcard '*' when the request's credentials mode is 'include'.
+
+8aksn-6c1cb3d678a543…ew.app.atoms.dev/:1 
+ Failed to load resource: net::ERR_FAILED
+react-router-dom.js?v=79267bd3:4436 ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+react-router-dom.js?v=79267bd3:4436 ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+3
+SmartScore.tsx:83 Video play failed: NotSupportedError: The element has no supported sources.
+24
+The resource <URL> was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+ReplayCamera.tsx:117 [Violation] Permissions policy violation: screen-wake-lock is not allowed in this document.
+9
+SmartScore.tsx:83 Video play failed: NotSupportedError: The element has no supported sources.
+2
+SmartScore.tsx:93 Video replay failed: NotSupportedError: The element has no supported sources.
+﻿
+
+Press cmd i to turn on code suggestions. Press cmd x to disable code suggestions.
+cmd
+i
+ to turn on code suggestions. Don't show again NEW
+
+Agentic extensions debugging
+You can now debug extensions through a coding agent using new tools in DevTools for agents, available through the MCP server.
+
+Sort network requests
+The Network panel introduces a new Request # column, allowing you to sort requests by their absolute chronological order of occurrence, independent of priority or duration.
+
+Accessibility tree
+To streamline the Elements panel, the Accessibility tree toggle has moved from the DOM tree to the Accessibility tab within the panel.

@@ -67,8 +67,10 @@ export default function SmartScore() {
             bucket_name: 'arrow-replays',
             object_key: objectKey,
           });
-          if (downloadRes?.data?.download_url) {
-            setReplayVideoUrl(downloadRes.data.download_url);
+          const url = downloadRes?.data?.download_url;
+          // Only set the URL if it's a valid non-empty string
+          if (url && typeof url === 'string' && url.trim().length > 0) {
+            setReplayVideoUrl(url);
           }
         }
       } catch (err) {
@@ -83,6 +85,12 @@ export default function SmartScore() {
 
   const toggleVideo = () => {
     if (!videoRef.current) return;
+    // Guard: do not attempt play if video has no valid source
+    const hasSource = videoRef.current.currentSrc || videoRef.current.src;
+    if (!hasSource) {
+      console.warn('No valid video source available');
+      return;
+    }
     if (isPlaying) {
       videoRef.current.pause();
       setIsPlaying(false);
@@ -97,6 +105,12 @@ export default function SmartScore() {
 
   const replayVideo = () => {
     if (!videoRef.current) return;
+    // Guard: do not attempt play if video has no valid source
+    const hasSource = videoRef.current.currentSrc || videoRef.current.src;
+    if (!hasSource) {
+      console.warn('No valid video source available');
+      return;
+    }
     videoRef.current.currentTime = 0;
     videoRef.current.play().catch((err) => {
       console.error('Video replay failed:', err);
@@ -218,7 +232,7 @@ export default function SmartScore() {
             <div className="flex items-center justify-center h-48 bg-slate-800/50 rounded-2xl border-2 border-slate-700/50">
               <Loader2 className="h-8 w-8 text-emerald-400 animate-spin" />
             </div>
-          ) : replayVideoUrl ? (
+          ) : replayVideoUrl && replayVideoUrl.trim().length > 0 ? (
             <>
               <div className="relative rounded-2xl overflow-hidden border-2 border-slate-700/50 bg-black">
                 <video
@@ -227,8 +241,13 @@ export default function SmartScore() {
                   className="w-full aspect-video object-cover"
                   playsInline
                   crossOrigin="anonymous"
+                  preload="metadata"
                   onEnded={() => setIsPlaying(false)}
-                  onError={() => setIsPlaying(false)}
+                  onError={() => {
+                    setIsPlaying(false);
+                    // If the video source fails to load, clear the URL to show placeholder
+                    setReplayVideoUrl(null);
+                  }}
                 />
                 {/* Play/Pause Overlay */}
                 <button
