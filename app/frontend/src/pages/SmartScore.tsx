@@ -47,7 +47,29 @@ export default function SmartScore() {
   // Create a stable key for the current target context to force re-renders
   const targetKey = `${tournamentId}-${archerId}-${courseNumber}-${targetNumber}`;
 
-  // Fetch replay video from backend - reset state on every param change
+  // Counter to force re-fetch when navigating back to the same target
+  const [fetchCounter, setFetchCounter] = useState(0);
+
+  // Force re-fetch replay when page gains focus (e.g., navigating back from ReplayCamera)
+  useEffect(() => {
+    const handleFocus = () => {
+      setFetchCounter(prev => prev + 1);
+    };
+    window.addEventListener('focus', handleFocus);
+    // Also trigger on visibility change (covers tab switching and app resume)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        setFetchCounter(prev => prev + 1);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
+  // Fetch replay video from backend - reset state on every param change or re-fetch trigger
   useEffect(() => {
     // Reset all replay-related state when params change
     setReplayVideoUrl(null);
@@ -66,7 +88,7 @@ export default function SmartScore() {
         const aid = parseInt(archerId);
         const cn = parseInt(courseNumber);
         const tn = parseInt(targetNumber);
-        console.log('[SmartScore] Fetching replay:', { tid, aid, cn, tn });
+        console.log('[SmartScore] Fetching replay:', { tid, aid, cn, tn, fetchCounter });
         const response = await client.apiCall.invoke({
           url: '/api/v1/replays/find',
           method: 'POST',
@@ -95,7 +117,9 @@ export default function SmartScore() {
           console.log('[SmartScore] Download URL:', url);
           // Only set the URL if it's a valid non-empty string
           if (url && typeof url === 'string' && url.trim().length > 0) {
-            setReplayVideoUrl(url);
+            // Append cache-buster to avoid stale cached video after re-upload
+            const cacheBuster = `${url.includes('?') ? '&' : '?'}t=${Date.now()}`;
+            setReplayVideoUrl(url + cacheBuster);
           }
         } else {
           console.log('[SmartScore] No object_key found in response');
@@ -116,7 +140,7 @@ export default function SmartScore() {
     return () => {
       cancelled = true;
     };
-  }, [tournamentId, archerId, courseNumber, targetNumber]);
+  }, [tournamentId, archerId, courseNumber, targetNumber, fetchCounter]);
 
   const toggleVideo = () => {
     if (!videoRef.current) return;

@@ -1,0 +1,105 @@
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 43: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 44: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 45: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 46: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 47: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 48: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 49: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 50: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 51: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 52: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 53: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 54: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 55: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 56: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 57: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 58: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 59: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 60: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Final replay map: 
+Object
+ReplayCamera.tsx:117 [Violation] Permissions policy violation: screen-wake-lock is not allowed in this document.
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Checking replays for: 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 1: {"object_key":"replays/5/7/course1_target1.mp4"}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 2: {"object_key":"replays/5/7/course1_target2.mp4"}
+appPlugins-atoms-pro…1774333923027.js:32 [SmartScore] Fetching replay: 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 3: {"object_key":"replays/5/7/course1_target3.mp4"}
+appPlugins-atoms-pro…1774333923027.js:32 [SmartScore] Replay find response: {"object_key":"replays/5/7/course1_target3.mp4"}
+appPlugins-atoms-pro…1774333923027.js:32 [SmartScore] Found object_key: replays/5/7/course1_target3.mp4
+appPlugins-atoms-pro…1774333923027.js:32 [SmartScore] Download URL: https://ba81dd8….oss.atoms.dev/course1_target3.mp4?…Signature=4674add…
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 4: {"object_key":"replays/5/7/course1_target4.mp4"}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 5: {"object_key":"replays/5/7/course1_target5.mp4"}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 6: {"object_key":"replays/5/7/course1_target6.mp4"}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 7: {"object_key":"replays/5/7/course1_target7.mp4"}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 8: {"object_key":"replays/5/7/course1_target8.mp4"}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 9: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 10: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 11: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 12: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 13: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 14: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 15: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 16: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 17: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 18: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 19: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 20: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 21: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 22: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 23: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 24: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 25: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 26: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 27: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 28: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 29: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 30: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 31: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 32: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 33: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 34: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 35: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 36: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 37: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 38: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 39: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 40: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 41: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 42: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 43: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 44: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 45: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 46: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 47: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 48: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 49: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 50: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 51: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 52: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 53: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 54: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 55: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 56: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 57: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 58: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 59: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 60: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Final replay map: 
+Object
+﻿
+
+Press cmd i to turn on code suggestions. Press cmd x to disable code suggestions.
+cmd
+i
+ to turn on code suggestions. Don't show again NEW
+
+Agentic extensions debugging
+You can now debug extensions through a coding agent using new tools in DevTools for agents, available through the MCP server.
+
+Sort network requests
+The Network panel introduces a new Request # column, allowing you to sort requests by their absolute chronological order of occurrence, independent of priority or duration.
+
+Accessibility tree
+To streamline the Elements panel, the Accessibility tree toggle has moved from the DOM tree to the Accessibility tab within the panel.

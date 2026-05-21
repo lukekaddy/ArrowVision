@@ -20,15 +20,21 @@ class ReplayOpsService:
         object_key: str,
         visibility: str = "public",
     ) -> dict:
-        """Save a replay video record to the database."""
-        # Check if a replay already exists for this combination
-        check_query = text(
-            "SELECT id FROM replay_videos "
+        """Save a replay video record to the database.
+
+        Uses DELETE-then-INSERT to ensure exactly one row exists per
+        (tournament_id, archer_id, course_number, target_number) combination.
+        This avoids issues with duplicate rows from earlier implementations
+        and guarantees the latest record is always retrievable.
+        """
+        # Delete ALL existing rows for this combination (handles duplicates)
+        delete_query = text(
+            "DELETE FROM replay_videos "
             "WHERE tournament_id = :tournament_id AND archer_id = :archer_id "
             "AND course_number = :course_number AND target_number = :target_number"
         )
-        result = await self.db.execute(
-            check_query,
+        delete_result = await self.db.execute(
+            delete_query,
             {
                 "tournament_id": tournament_id,
                 "archer_id": archer_id,
@@ -36,52 +42,32 @@ class ReplayOpsService:
                 "target_number": target_number,
             },
         )
-        existing = result.fetchone()
+        was_update = delete_result.rowcount > 0
 
-        if existing:
-            # Update existing record
-            update_query = text(
-                "UPDATE replay_videos SET object_key = :object_key, "
-                "user_id = :user_id, visibility = :visibility, "
-                "updated_at = NOW() "
-                "WHERE id = :id"
-            )
-            await self.db.execute(
-                update_query,
-                {
-                    "object_key": object_key,
-                    "user_id": user_id,
-                    "visibility": visibility,
-                    "id": existing[0],
-                },
-            )
-            await self.db.commit()
-            return {"id": existing[0], "object_key": object_key, "updated": True}
-        else:
-            # Insert new record
-            insert_query = text(
-                "INSERT INTO replay_videos (user_id, tournament_id, archer_id, "
-                "course_number, target_number, object_key, visibility, "
-                "created_at, updated_at) "
-                "VALUES (:user_id, :tournament_id, :archer_id, :course_number, "
-                ":target_number, :object_key, :visibility, NOW(), NOW()) "
-                "RETURNING id"
-            )
-            result = await self.db.execute(
-                insert_query,
-                {
-                    "user_id": user_id,
-                    "tournament_id": tournament_id,
-                    "archer_id": archer_id,
-                    "course_number": course_number,
-                    "target_number": target_number,
-                    "object_key": object_key,
-                    "visibility": visibility,
-                },
-            )
-            await self.db.commit()
-            row = result.fetchone()
-            return {"id": row[0] if row else None, "object_key": object_key, "updated": False}
+        # Insert fresh record
+        insert_query = text(
+            "INSERT INTO replay_videos (user_id, tournament_id, archer_id, "
+            "course_number, target_number, object_key, visibility, "
+            "created_at, updated_at) "
+            "VALUES (:user_id, :tournament_id, :archer_id, :course_number, "
+            ":target_number, :object_key, :visibility, NOW(), NOW()) "
+            "RETURNING id"
+        )
+        result = await self.db.execute(
+            insert_query,
+            {
+                "user_id": user_id,
+                "tournament_id": tournament_id,
+                "archer_id": archer_id,
+                "course_number": course_number,
+                "target_number": target_number,
+                "object_key": object_key,
+                "visibility": visibility,
+            },
+        )
+        await self.db.commit()
+        row = result.fetchone()
+        return {"id": row[0] if row else None, "object_key": object_key, "updated": was_update}
 
     async def get_replay(
         self,
