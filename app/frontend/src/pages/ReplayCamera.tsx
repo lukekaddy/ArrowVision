@@ -85,6 +85,10 @@ export default function ReplayCamera() {
       cancelAnimationFrame(animFrameRef.current);
       animFrameRef.current = 0;
     }
+    if (dataPollingRef.current) {
+      clearInterval(dataPollingRef.current);
+      dataPollingRef.current = null;
+    }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
@@ -117,16 +121,28 @@ export default function ReplayCamera() {
     }
   };
 
+  const isIOS = (): boolean => {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  };
+
   const getSupportedMimeType = (): string => {
-    const types = [
+    // On iOS Safari, mp4 is the only supported format for MediaRecorder
+    const iosTypes = [
+      'video/mp4',
+      'video/mp4;codecs=avc1',
+    ];
+    const defaultTypes = [
       'video/webm;codecs=vp8,opus',
       'video/webm;codecs=vp9,opus',
       'video/webm',
       'video/mp4',
     ];
+    const types = isIOS() ? iosTypes : defaultTypes;
     for (const type of types) {
       if (MediaRecorder.isTypeSupported(type)) return type;
     }
+    // Last resort: try without specifying mimeType
     return '';
   };
 
@@ -165,34 +181,66 @@ export default function ReplayCamera() {
     }
   };
 
+  const dataPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const startRecording = (stream: MediaStream) => {
     const mimeType = getSupportedMimeType();
-    if (!mimeType) {
-      setStatusMessage('No supported video format found on this device.');
-      return;
-    }
 
     chunksRef.current = [];
-    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2500000 });
+    let recorder: MediaRecorder;
+    try {
+      const options: MediaRecorderOptions = { videoBitsPerSecond: 2500000 };
+      if (mimeType) options.mimeType = mimeType;
+      recorder = new MediaRecorder(stream, options);
+    } catch {
+      // If options fail, try bare MediaRecorder
+      try {
+        recorder = new MediaRecorder(stream);
+      } catch (e2) {
+        console.error('MediaRecorder not supported:', e2);
+        setStatusMessage('Recording not supported on this device/browser.');
+        return;
+      }
+    }
 
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) {
         chunksRef.current.push(e.data);
-        // Keep only last 10 seconds worth of chunks (10 chunks at 1s each)
+        // Keep only last 10 seconds worth of chunks
         if (chunksRef.current.length > 10) {
           chunksRef.current = chunksRef.current.slice(-10);
         }
       }
     };
 
-    recorder.start(1000); // 1-second chunks
+    // On iOS, timeslice in start() is unreliable. Use requestData() polling instead.
+    if (isIOS()) {
+      recorder.start(); // Start without timeslice
+      // Poll for data every 1 second
+      dataPollingRef.current = setInterval(() => {
+        if (recorder.state === 'recording') {
+          try {
+            recorder.requestData();
+          } catch {
+            // requestData may throw if recorder is in wrong state
+          }
+        }
+      }, 1000);
+    } else {
+      recorder.start(1000); // 1-second chunks on non-iOS
+    }
+
     mediaRecorderRef.current = recorder;
     setRecordingStatus('listening');
     isListeningRef.current = true;
   };
 
-  const startAudioDetection = (stream: MediaStream) => {
+  const startAudioDetection = async (stream: MediaStream) => {
     const audioContext = new AudioContext();
+    // iOS Safari requires resume() after user gesture
+    if (audioContext.state === 'suspended') {
+      await audioContext.resume();
+    }
     const source = audioContext.createMediaStreamSource(stream);
     const analyser = audioContext.createAnalyser();
     analyser.fftSize = 2048;
@@ -246,10 +294,25 @@ export default function ReplayCamera() {
       return;
     }
 
-    recorder.stop();
+    // Stop the data polling interval (iOS)
+    if (dataPollingRef.current) {
+      clearInterval(dataPollingRef.current);
+      dataPollingRef.current = null;
+    }
 
-    // Small delay to ensure ondataavailable fires
-    await new Promise(resolve => setTimeout(resolve, 200));
+    // Wait for the recorder to fully stop and flush remaining data
+    await new Promise<void>((resolve) => {
+      recorder.onstop = () => resolve();
+      // Request any final data before stopping
+      try {
+        if (recorder.state === 'recording') {
+          recorder.requestData();
+        }
+      } catch {
+        // May throw on some browsers
+      }
+      recorder.stop();
+    });
 
     // Take the last 6 seconds of chunks (3 before trigger + 3 after)
     const clipChunks = chunksRef.current.slice(-6);
@@ -260,7 +323,7 @@ export default function ReplayCamera() {
       return;
     }
 
-    const mimeType = getSupportedMimeType();
+    const mimeType = getSupportedMimeType() || 'video/mp4';
     const clipBlob = new Blob(clipChunks, { type: mimeType });
 
     // Upload if context is set
