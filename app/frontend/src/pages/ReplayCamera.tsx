@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
@@ -30,9 +29,8 @@ type CameraStatus = 'idle' | 'requesting' | 'active' | 'error';
 type RecordingStatus = 'idle' | 'listening' | 'triggered' | 'uploading' | 'success' | 'error';
 
 export default function ReplayCamera() {
-  const { user, loading, login } = useAuth();
+  const { user, login } = useAuth();
   const client = getClient();
-  const navigate = useNavigate();
 
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -62,7 +60,7 @@ export default function ReplayCamera() {
   const [targetNumber, setTargetNumber] = useState(1);
   const [clipCount, setClipCount] = useState(0);
 
-  // Fetch tournaments on mount
+  // Fetch tournaments on mount (only if logged in)
   useEffect(() => {
     const fetchTournaments = async () => {
       try {
@@ -83,31 +81,25 @@ export default function ReplayCamera() {
   }, []);
 
   const stopEverything = () => {
-    // Stop animation frame
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
       animFrameRef.current = 0;
     }
-    // Stop media recorder
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
-    // Stop stream tracks
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     }
-    // Close audio context
     if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
       audioContextRef.current.close();
       audioContextRef.current = null;
     }
-    // Release wake lock
     if (wakeLockRef.current) {
       wakeLockRef.current.release();
       wakeLockRef.current = null;
     }
-    // Clear timeout
     if (triggerTimeoutRef.current) {
       clearTimeout(triggerTimeoutRef.current);
       triggerTimeoutRef.current = null;
@@ -238,14 +230,12 @@ export default function ReplayCamera() {
   };
 
   const generateClip = async () => {
-    // Stop recorder to flush final data
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state === 'inactive') {
       resetAfterClip();
       return;
     }
 
-    // Request data and wait for it
     recorder.stop();
 
     // Small delay to ensure ondataavailable fires
@@ -274,6 +264,14 @@ export default function ReplayCamera() {
   };
 
   const uploadClip = async (clipBlob: Blob) => {
+    // Check if user is logged in before uploading
+    if (!user) {
+      setStatusMessage('Sign in to save clips to cloud.');
+      setRecordingStatus('error');
+      setTimeout(() => resetAfterClip(), 3000);
+      return;
+    }
+
     setRecordingStatus('uploading');
     setStatusMessage('Uploading replay...');
 
@@ -281,7 +279,6 @@ export default function ReplayCamera() {
     const objectKey = `replays/${selectedTournament!.id}/${selectedArcher!.id}/course${courseNum}_target${targetNumber}.mp4`;
 
     try {
-      // Convert blob to File for upload
       const file = new File([clipBlob], `course${courseNum}_target${targetNumber}.mp4`, { type: clipBlob.type });
 
       await client.storage.upload({
@@ -383,30 +380,6 @@ export default function ReplayCamera() {
     }
   };
 
-  if (loading) {
-    return (
-      <Layout>
-        <div className="max-w-md mx-auto px-4 py-20 text-center">
-          <Loader2 className="h-12 w-12 text-emerald-400 animate-spin mx-auto mb-4" />
-          <p className="text-slate-400">Loading...</p>
-        </div>
-      </Layout>
-    );
-  }
-
-  if (!user) {
-    return (
-      <Layout>
-        <div className="max-w-md mx-auto px-4 py-20 text-center">
-          <Video className="h-16 w-16 text-slate-600 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-white mb-3">Sign In Required</h2>
-          <p className="text-slate-400 mb-6">Sign in to use the Replay Camera.</p>
-          <Button onClick={login} className="bg-emerald-500 hover:bg-emerald-600 text-white">Sign In</Button>
-        </div>
-      </Layout>
-    );
-  }
-
   return (
     <Layout>
       <div className="max-w-2xl mx-auto px-4 py-4">
@@ -422,142 +395,158 @@ export default function ReplayCamera() {
           )}
         </div>
 
-        {/* Context Selection Bar */}
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          <Select onValueChange={selectTournament}>
-            <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-10 text-sm">
-              <SelectValue placeholder="Tournament" />
-            </SelectTrigger>
-            <SelectContent className="bg-slate-800 border-slate-700">
-              {tournaments.map(t => (
-                <SelectItem key={t.id} value={t.id.toString()} className="text-white text-sm">{t.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        {/* Prominent Start Camera Button - shown when idle */}
+        {cameraStatus === 'idle' && (
+          <Button
+            onClick={startCamera}
+            className="w-full h-16 bg-emerald-500 hover:bg-emerald-600 text-white text-xl font-bold rounded-xl mb-6 flex items-center justify-center gap-3 shadow-lg shadow-emerald-500/20"
+          >
+            <Video className="h-7 w-7" />
+            ▶ Start Camera
+          </Button>
+        )}
 
-          {coursesConfig.length > 1 ? (
-            <Select onValueChange={selectCourse}>
-              <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-10 text-sm">
-                <SelectValue placeholder="Course" />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-800 border-slate-700">
-                {coursesConfig.map(c => (
-                  <SelectItem key={c.course} value={c.course.toString()} className="text-white text-sm">
-                    {c.name || `Course ${c.course}`}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : (
-            <Select onValueChange={(v) => { setSelectedArcher(archers.find(a => a.id === parseInt(v)) || null); setTargetNumber(1); }}>
-              <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-10 text-sm">
-                <SelectValue placeholder="Archer" />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-800 border-slate-700">
-                {archers.map(a => (
-                  <SelectItem key={a.id} value={a.id.toString()} className="text-white text-sm">{a.archer_name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
-          {coursesConfig.length > 1 && (
-            <Select onValueChange={(v) => { setSelectedArcher(archers.find(a => a.id === parseInt(v)) || null); setTargetNumber(1); }}>
-              <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-10 text-sm">
-                <SelectValue placeholder="Archer" />
-              </SelectTrigger>
-              <SelectContent className="bg-slate-800 border-slate-700">
-                {archers.map(a => (
-                  <SelectItem key={a.id} value={a.id.toString()} className="text-white text-sm">{a.archer_name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
-          {/* Target Number */}
-          <div className="flex items-center gap-2">
-            <span className="text-slate-400 text-sm whitespace-nowrap">Target:</span>
-            <input
-              type="number"
-              min={1}
-              max={selectedCourse?.targets || 99}
-              value={targetNumber}
-              onChange={(e) => setTargetNumber(Math.max(1, parseInt(e.target.value) || 1))}
-              className="w-16 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-white text-center text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
+        {/* Not logged in notice */}
+        {!user && cameraStatus === 'idle' && (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 mb-4 flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-400 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-amber-300 text-sm">Sign in to save replay clips to cloud storage.</p>
+            </div>
+            <Button onClick={login} size="sm" className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs">
+              Sign In
+            </Button>
           </div>
-        </div>
+        )}
+
+        {/* Context Selection Bar - only show when logged in */}
+        {user && cameraStatus !== 'error' && (
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            <Select onValueChange={selectTournament}>
+              <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-10 text-sm">
+                <SelectValue placeholder="Tournament" />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-800 border-slate-700">
+                {tournaments.map(t => (
+                  <SelectItem key={t.id} value={t.id.toString()} className="text-white text-sm">{t.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {coursesConfig.length > 1 ? (
+              <Select onValueChange={selectCourse}>
+                <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-10 text-sm">
+                  <SelectValue placeholder="Course" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-800 border-slate-700">
+                  {coursesConfig.map(c => (
+                    <SelectItem key={c.course} value={c.course.toString()} className="text-white text-sm">
+                      {c.name || `Course ${c.course}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Select onValueChange={(v) => { setSelectedArcher(archers.find(a => a.id === parseInt(v)) || null); setTargetNumber(1); }}>
+                <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-10 text-sm">
+                  <SelectValue placeholder="Archer" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-800 border-slate-700">
+                  {archers.map(a => (
+                    <SelectItem key={a.id} value={a.id.toString()} className="text-white text-sm">{a.archer_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            {coursesConfig.length > 1 && (
+              <Select onValueChange={(v) => { setSelectedArcher(archers.find(a => a.id === parseInt(v)) || null); setTargetNumber(1); }}>
+                <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-10 text-sm">
+                  <SelectValue placeholder="Archer" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-800 border-slate-700">
+                  {archers.map(a => (
+                    <SelectItem key={a.id} value={a.id.toString()} className="text-white text-sm">{a.archer_name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            {/* Target Number */}
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400 text-sm whitespace-nowrap">Target:</span>
+              <input
+                type="number"
+                min={1}
+                max={selectedCourse?.targets || 99}
+                value={targetNumber}
+                onChange={(e) => setTargetNumber(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-16 bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-white text-center text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+          </div>
+        )}
 
         {/* Camera View */}
-        <div className="relative rounded-xl overflow-hidden bg-black aspect-video mb-4">
-          {cameraStatus === 'active' ? (
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              {cameraStatus === 'requesting' ? (
-                <>
-                  <Loader2 className="h-12 w-12 text-emerald-400 animate-spin mb-3" />
-                  <p className="text-slate-300">Requesting camera access...</p>
-                </>
-              ) : cameraStatus === 'error' ? (
-                <>
-                  <AlertCircle className="h-12 w-12 text-red-400 mb-3" />
-                  <p className="text-red-300 text-center px-4">{statusMessage}</p>
-                  <Button onClick={startCamera} className="mt-4 bg-emerald-500 hover:bg-emerald-600 text-white">
-                    Retry
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Video className="h-16 w-16 text-slate-600 mb-3" />
-                  <p className="text-slate-400 mb-4">Camera preview will appear here</p>
-                  <Button onClick={startCamera} className="bg-emerald-500 hover:bg-emerald-600 text-white h-12 px-6 text-lg">
-                    Start Camera
-                  </Button>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* Status Overlay */}
-          {cameraStatus === 'active' && (
-            <>
-              {/* Top-left status badge */}
-              <div className="absolute top-3 left-3 flex items-center gap-2">
-                <div className={`w-3 h-3 rounded-full ${getStatusColor()} ${recordingStatus === 'listening' ? 'animate-pulse' : ''}`} />
-                <span className="text-white text-sm font-medium bg-black/50 px-2 py-0.5 rounded">
-                  {getStatusLabel()}
-                </span>
+        {cameraStatus !== 'idle' && (
+          <div className="relative rounded-xl overflow-hidden bg-black aspect-video mb-4">
+            {cameraStatus === 'active' ? (
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                {cameraStatus === 'requesting' ? (
+                  <>
+                    <Loader2 className="h-12 w-12 text-emerald-400 animate-spin mb-3" />
+                    <p className="text-slate-300">Requesting camera access...</p>
+                  </>
+                ) : cameraStatus === 'error' ? (
+                  <>
+                    <AlertCircle className="h-12 w-12 text-red-400 mb-3" />
+                    <p className="text-red-300 text-center px-4">{statusMessage}</p>
+                    <Button onClick={startCamera} className="mt-4 bg-emerald-500 hover:bg-emerald-600 text-white">
+                      Retry
+                    </Button>
+                  </>
+                ) : null}
               </div>
+            )}
 
-              {/* Top-right target info */}
-              <div className="absolute top-3 right-3 bg-black/50 px-3 py-1 rounded text-white text-sm">
-                T{targetNumber} {selectedArcher ? `• ${selectedArcher.archer_name}` : ''}
-              </div>
-
-              {/* Volume meter */}
-              <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2">
-                <Volume2 className="h-4 w-4 text-white/70" />
-                <div className="flex-1 h-2 bg-white/20 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-75 ${currentVolume > sensitivity ? 'bg-amber-400' : 'bg-emerald-400'}`}
-                    style={{ width: `${Math.min(currentVolume * 500, 100)}%` }}
-                  />
+            {/* Status Overlay */}
+            {cameraStatus === 'active' && (
+              <>
+                {/* Top-left status badge */}
+                <div className="absolute top-3 left-3 flex items-center gap-2">
+                  <div className={`w-3 h-3 rounded-full ${getStatusColor()} ${recordingStatus === 'listening' ? 'animate-pulse' : ''}`} />
+                  <span className="text-white text-sm font-medium bg-black/50 px-2 py-0.5 rounded">
+                    {getStatusLabel()}
+                  </span>
                 </div>
-                {/* Threshold marker */}
-                <div className="relative w-full absolute left-0 right-0 bottom-0 pointer-events-none" style={{ display: 'none' }}>
-                  <div className="absolute h-2 border-r-2 border-red-400" style={{ left: `${sensitivity * 500}%` }} />
+
+                {/* Top-right target info */}
+                <div className="absolute top-3 right-3 bg-black/50 px-3 py-1 rounded text-white text-sm">
+                  T{targetNumber} {selectedArcher ? `• ${selectedArcher.archer_name}` : ''}
                 </div>
-              </div>
-            </>
-          )}
-        </div>
+
+                {/* Volume meter */}
+                <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2">
+                  <Volume2 className="h-4 w-4 text-white/70" />
+                  <div className="flex-1 h-2 bg-white/20 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-75 ${currentVolume > sensitivity ? 'bg-amber-400' : 'bg-emerald-400'}`}
+                      style={{ width: `${Math.min(currentVolume * 500, 100)}%` }}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Status Message */}
         {statusMessage && cameraStatus === 'active' && (
@@ -616,15 +605,15 @@ export default function ReplayCamera() {
           </Button>
         )}
 
-        {/* Instructions */}
+        {/* Instructions - shown when camera is idle */}
         {cameraStatus === 'idle' && (
           <div className="bg-slate-800/50 rounded-xl p-5 border border-slate-700/50">
             <h3 className="text-white font-semibold mb-3">How it works</h3>
             <ol className="text-slate-400 text-sm space-y-2 list-decimal list-inside">
-              <li>Select tournament, archer, and starting target above</li>
-              <li>Tap &quot;Start Camera&quot; to begin recording</li>
-              <li>Point camera at the target — audio continuously monitored</li>
+              <li>Tap &quot;Start Camera&quot; above to begin recording</li>
+              <li>Point camera at the target — audio is continuously monitored</li>
               <li>When an arrow impact is detected, a 6-second clip is saved</li>
+              <li>Sign in and select tournament/archer to auto-upload clips</li>
               <li>Target number auto-advances after each successful save</li>
             </ol>
             <p className="text-slate-500 text-xs mt-3">
