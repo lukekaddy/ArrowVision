@@ -46,7 +46,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   // Auto-redirect to role selection if needed
   useEffect(() => {
-    if (user && needsRoleSelection && location.pathname !== '/role-select' && location.pathname !== '/auth/callback') {
+    if (user && needsRoleSelection && location.pathname !== '/role-select' && location.pathname !== '/auth/callback' && location.pathname !== '/replay-camera') {
       navigate('/role-select');
     }
   }, [user, needsRoleSelection, location.pathname, navigate]);

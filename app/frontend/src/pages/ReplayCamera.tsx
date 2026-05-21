@@ -30,7 +30,7 @@ type CameraStatus = 'idle' | 'requesting' | 'active' | 'error';
 type RecordingStatus = 'idle' | 'listening' | 'triggered' | 'uploading' | 'success' | 'error';
 
 export default function ReplayCamera() {
-  const { user, login } = useAuth();
+  const { user, loading, login } = useAuth();
   const client = getClient();
   const navigate = useNavigate();
 
@@ -382,6 +382,17 @@ export default function ReplayCamera() {
       default: return 'Idle';
     }
   };
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="max-w-md mx-auto px-4 py-20 text-center">
+          <Loader2 className="h-12 w-12 text-emerald-400 animate-spin mx-auto mb-4" />
+          <p className="text-slate-400">Loading...</p>
+        </div>
+      </Layout>
+    );
+  }
 
   if (!user) {
     return (
