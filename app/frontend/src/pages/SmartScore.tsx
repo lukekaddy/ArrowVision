@@ -3,9 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
-import { Crosshair, ArrowLeft, Play, Edit3, Lock, Loader2 } from 'lucide-react';
-
-const FALLBACK_VIDEO_URL = 'https://mgx-backend-cdn.metadl.com/generate/videos/1230028/2026-05-14/or3jxaaaafsq/fixed-camera-arrow-hit.mp4';
+import { Crosshair, ArrowLeft, Play, Edit3, Lock, Loader2, VideoOff } from 'lucide-react';
 
 export default function SmartScore() {
   const navigate = useNavigate();
@@ -89,7 +87,10 @@ export default function SmartScore() {
       videoRef.current.pause();
       setIsPlaying(false);
     } else {
-      videoRef.current.play();
+      videoRef.current.play().catch((err) => {
+        console.error('Video play failed:', err);
+        setIsPlaying(false);
+      });
       setIsPlaying(true);
     }
   };
@@ -97,7 +98,10 @@ export default function SmartScore() {
   const replayVideo = () => {
     if (!videoRef.current) return;
     videoRef.current.currentTime = 0;
-    videoRef.current.play();
+    videoRef.current.play().catch((err) => {
+      console.error('Video replay failed:', err);
+      setIsPlaying(false);
+    });
     setIsPlaying(true);
   };
 
@@ -214,16 +218,17 @@ export default function SmartScore() {
             <div className="flex items-center justify-center h-48 bg-slate-800/50 rounded-2xl border-2 border-slate-700/50">
               <Loader2 className="h-8 w-8 text-emerald-400 animate-spin" />
             </div>
-          ) : (
+          ) : replayVideoUrl ? (
             <>
               <div className="relative rounded-2xl overflow-hidden border-2 border-slate-700/50 bg-black">
                 <video
                   ref={videoRef}
-                  src={replayVideoUrl || FALLBACK_VIDEO_URL}
+                  src={replayVideoUrl}
                   className="w-full aspect-video object-cover"
                   playsInline
+                  crossOrigin="anonymous"
                   onEnded={() => setIsPlaying(false)}
-                  poster="/placeholder-target.jpg"
+                  onError={() => setIsPlaying(false)}
                 />
                 {/* Play/Pause Overlay */}
                 <button
@@ -246,6 +251,12 @@ export default function SmartScore() {
                 <Play className="h-4 w-4" /> Replay Clip
               </Button>
             </>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-48 bg-slate-800/50 rounded-2xl border-2 border-slate-700/50">
+              <VideoOff className="h-10 w-10 text-slate-500 mb-3" />
+              <p className="text-slate-400 text-sm font-medium">No replay available for this target</p>
+              <p className="text-slate-500 text-xs mt-1">Record a replay using the Replay Camera</p>
+            </div>
           )}
         </div>
 

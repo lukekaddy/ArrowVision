@@ -515,7 +515,15 @@ export default function Scorecard() {
                     {replayModalState === 'error' && (
                       <div className="flex flex-col items-center justify-center py-12">
                         <X className="h-10 w-10 text-red-400 mb-4" />
-                        <p className="text-red-400 text-sm text-center">{replayError || 'Failed to load replay.'}</p>
+                        <p className="text-red-400 text-sm text-center mb-4">{replayError || 'Failed to load replay.'}</p>
+                        <Button
+                          onClick={() => { if (replayModalTarget) openReplayModal(replayModalTarget); }}
+                          variant="outline"
+                          size="sm"
+                          className="border-slate-600 text-slate-300 hover:text-white hover:border-emerald-500"
+                        >
+                          Retry
+                        </Button>
                       </div>
                     )}
                     {replayModalState === 'ready' && replayModalUrl && (
