@@ -304,15 +304,12 @@ async def get_scorecard_template(
     tournament_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    """Get the scoring template for a tournament (public)"""
+    """Get the scoring template for a tournament (public). Returns null if none exists."""
     service = TournamentOpsService(db)
     try:
         result = await service.get_scoring_template_by_tournament(tournament_id)
-        if not result:
-            raise HTTPException(status_code=404, detail="Scorecard template not found for this tournament")
+        # Return null instead of 404 to avoid SDK error notifications in the frontend
         return result
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error fetching scorecard template: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
