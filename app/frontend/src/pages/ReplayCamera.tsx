@@ -133,10 +133,20 @@ export default function ReplayCamera() {
   const startCamera = async () => {
     setCameraStatus('requesting');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: true,
-      });
+      let stream: MediaStream;
+      try {
+        // First try exact 'environment' to force the rear camera on iOS
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: true,
+        });
+      } catch {
+        // Fallback: some devices don't support exact constraint, use ideal instead
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: true,
+        });
+      }
       streamRef.current = stream;
 
       if (videoRef.current) {
