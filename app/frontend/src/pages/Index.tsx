@@ -57,8 +57,12 @@ export default function Index() {
   const client = getClient();
 
   useEffect(() => {
-    if (user && user.role === 'user') {
-      navigate('/archer', { replace: true });
+    if (user) {
+      if (user.role === 'user') {
+        navigate('/archer', { replace: true });
+      } else if (!user.role) {
+        navigate('/role-select', { replace: true });
+      }
     }
   }, [user, navigate]);
 

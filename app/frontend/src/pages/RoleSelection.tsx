@@ -1,14 +1,32 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Shield, Target } from 'lucide-react';
 
 export default function RoleSelection() {
-  const { user, refreshRole } = useAuth();
+  const { user, loading, refreshRole } = useAuth();
   const navigate = useNavigate();
   const [selecting, setSelecting] = useState(false);
   const client = getClient();
+
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate('/', { replace: true });
+    }
+  }, [user, loading, navigate]);
+
+  // Redirect if user already has a role
+  useEffect(() => {
+    if (user && user.role) {
+      if (user.role === 'admin') {
+        navigate('/', { replace: true });
+      } else {
+        navigate('/archer', { replace: true });
+      }
+    }
+  }, [user, navigate]);
 
   const handleSelectRole = async (role: 'admin' | 'user') => {
     if (selecting) return;
@@ -20,13 +38,25 @@ export default function RoleSelection() {
         data: { role },
       });
       await refreshRole();
-      navigate('/');
+      if (role === 'admin') {
+        navigate('/', { replace: true });
+      } else {
+        navigate('/archer', { replace: true });
+      }
     } catch (err) {
       console.error('Failed to set role:', err);
     } finally {
       setSelecting(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#0f172a' }}>
+        <div className="animate-spin h-8 w-8 border-2 border-emerald-400 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
 
   if (!user) {
     return (
@@ -59,7 +89,7 @@ export default function RoleSelection() {
           </div>
         </button>
 
-        {/* User Card */}
+        {/* Archer Card */}
         <button
           onClick={() => handleSelectRole('user')}
           disabled={selecting}
@@ -69,7 +99,7 @@ export default function RoleSelection() {
             <Target className="h-8 w-8 text-amber-400" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-white mb-1">Tournament User</h3>
+            <h3 className="text-lg font-semibold text-white mb-1">Tournament Archer</h3>
             <p className="text-sm text-slate-400">View tournaments, enter scores, check leaderboard rankings</p>
           </div>
         </button>

@@ -12,6 +12,7 @@ interface AuthUser {
 interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
+  isAuthenticated: boolean;
   needsRoleSelection: boolean;
   login: () => void;
   logout: () => Promise<void>;
@@ -21,6 +22,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
+  isAuthenticated: false,
   needsRoleSelection: false,
   login: () => {},
   logout: async () => {},
@@ -99,8 +101,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await fetchRole();
   }, [fetchRole]);
 
+  const isAuthenticated = !!user;
+
   return (
-    <AuthContext.Provider value={{ user, loading, needsRoleSelection, login, logout, refreshRole }}>
+    <AuthContext.Provider value={{ user, loading, isAuthenticated, needsRoleSelection, login, logout, refreshRole }}>
       {children}
     </AuthContext.Provider>
   );
