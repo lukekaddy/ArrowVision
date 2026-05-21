@@ -10,6 +10,12 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 
 ## Task Breakdown
 - [x] Create database tables (tournaments, tournament_archers, scores)
+- [x] Build backend API endpoint `/api/v1/tournament/my-tournaments` for archer's registered tournaments
+- [x] Build Archer Home Page (`/archer`) with upcoming tournaments and registered tournaments
+- [x] Build Tournament Registration Page (`/archer/register/:id`) for archers to register
+- [x] Build My Scorecards Page (`/archer/my-scorecards`) with personal scorecard history
+- [x] Update Layout.tsx with role-based navigation (admin nav vs archer nav)
+- [x] Update routing: role-based redirect from `/` and add archer routes to App.tsx
 - [x] Create scoring_templates database table
 - [x] Create backend API endpoints for scorecard template CRUD
 - [x] Build Create Scorecard page with 2 templates + custom option

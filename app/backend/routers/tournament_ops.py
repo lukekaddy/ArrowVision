@@ -108,6 +108,21 @@ async def get_leaderboard(
 
 
 # ---------- Authenticated Routes ----------
+@router.get("/my-tournaments")
+async def get_my_tournaments(
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all tournaments the current authenticated user is registered for,
+    along with registration details and score summaries."""
+    service = TournamentOpsService(db)
+    try:
+        return await service.get_my_tournaments(user_id=str(current_user.id))
+    except Exception as e:
+        logger.error(f"Error fetching user's tournaments: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/archers/{tournament_id}")
 async def get_tournament_archers(
     tournament_id: int,

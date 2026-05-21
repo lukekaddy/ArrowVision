@@ -11,12 +11,25 @@ interface NavLink {
   label: string;
 }
 
-const MAIN_NAV_LINKS: NavLink[] = [
+const ADMIN_NAV_LINKS: NavLink[] = [
   { to: '/', label: 'Home' },
   { to: '/create-tournament', label: 'Create Tournament' },
   { to: '/create-scorecard', label: 'Create Scorecard' },
   { to: '/scorecard', label: 'Scorecard' },
   { to: '/replay-camera', label: 'Replay Camera' },
+  { to: '/leaderboard', label: 'Live Leaderboard' },
+  { to: '/results', label: 'Results' },
+];
+
+const ARCHER_NAV_LINKS: NavLink[] = [
+  { to: '/archer', label: 'Home' },
+  { to: '/archer/my-scorecards', label: 'My Scorecards' },
+  { to: '/leaderboard', label: 'Live Leaderboard' },
+  { to: '/results', label: 'Results' },
+];
+
+const PUBLIC_NAV_LINKS: NavLink[] = [
+  { to: '/', label: 'Home' },
   { to: '/leaderboard', label: 'Live Leaderboard' },
   { to: '/results', label: 'Results' },
 ];
@@ -27,12 +40,13 @@ const ADMIN_LINKS: NavLink[] = [
 
 function getNavLinksForRole(role: string | null | undefined, isLoggedIn: boolean): NavLink[] {
   if (!isLoggedIn) {
-    return MAIN_NAV_LINKS.filter((l) =>
-      ['/', '/leaderboard', '/results'].includes(l.to)
-    );
+    return PUBLIC_NAV_LINKS;
   }
-  // All logged-in users see the main nav links
-  return MAIN_NAV_LINKS;
+  if (role === 'admin') {
+    return ADMIN_NAV_LINKS;
+  }
+  // Regular users (archers) see archer-specific navigation
+  return ARCHER_NAV_LINKS;
 }
 
 export default function Layout({ children }: { children: React.ReactNode }) {

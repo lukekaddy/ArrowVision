@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
@@ -51,9 +51,16 @@ function parseCourses(coursesStr?: string): CourseConfig[] {
 
 export default function Index() {
   const { user, login } = useAuth();
+  const navigate = useNavigate();
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [loadingTournaments, setLoadingTournaments] = useState(true);
   const client = getClient();
+
+  useEffect(() => {
+    if (user && user.role === 'user') {
+      navigate('/archer', { replace: true });
+    }
+  }, [user, navigate]);
 
   useEffect(() => {
     const fetchTournaments = async () => {

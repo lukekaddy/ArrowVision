@@ -315,6 +315,54 @@ class TournamentOpsService:
             "created_at": s.created_at.isoformat() if s.created_at else None,
         }
 
+    # ---------- My Tournaments (Archer) ----------
+
+    async def get_my_tournaments(self, user_id: str) -> List[Dict]:
+        """Get all tournaments the current user is registered for, with registration and score info."""
+        # Get all registrations for this user
+        archer_query = select(Tournament_archers).where(
+            Tournament_archers.user_id == user_id
+        ).order_by(Tournament_archers.created_at.desc())
+        archer_result = await self.db.execute(archer_query)
+        registrations = archer_result.scalars().all()
+
+        results = []
+        for reg in registrations:
+            # Get tournament details
+            cols = await self._get_tournament_columns()
+            col_str = ", ".join(cols)
+            t_query = text(f"SELECT {col_str} FROM tournaments WHERE id = :tid")
+            t_result = await self.db.execute(t_query, {"tid": reg.tournament_id})
+            t_row = t_result.mappings().first()
+
+            if not t_row:
+                continue
+
+            tournament_dict = self._row_to_dict(dict(t_row))
+            tournament_dict["status"] = self._compute_status(tournament_dict.get("date"))
+
+            # Get score summary for this archer in this tournament
+            score_query = select(
+                func.coalesce(func.sum(Scores.score_value), 0).label("total_score"),
+                func.count(Scores.id).label("targets_scored"),
+            ).where(
+                Scores.tournament_id == reg.tournament_id,
+                Scores.archer_id == reg.id,
+            )
+            score_result = await self.db.execute(score_query)
+            score_row = score_result.one()
+
+            results.append({
+                "tournament": tournament_dict,
+                "registration": self._archer_to_dict(reg),
+                "score_summary": {
+                    "total_score": int(score_row.total_score),
+                    "targets_scored": int(score_row.targets_scored),
+                },
+            })
+
+        return results
+
     # ---------- Scoring Template Methods ----------
 
     async def create_scoring_template(self, data: Dict[str, Any], user_id: str) -> Dict:
