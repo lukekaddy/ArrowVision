@@ -47,7 +47,7 @@ interface SavedScorecard {
 }
 
 export default function TournamentCreate() {
-  const { user, login } = useAuth();
+  const { user, login, token } = useAuth();
   const navigate = useNavigate();
   const client = getClient();
   const [saving, setSaving] = useState(false);
@@ -77,10 +77,10 @@ export default function TournamentCreate() {
   const [mulliganRestrictedTargets, setMulliganRestrictedTargets] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (user) {
+    if (user && token) {
       fetchScorecards();
     }
-  }, [user]);
+  }, [user, token]);
 
   const fetchScorecards = async () => {
     try {
@@ -88,6 +88,7 @@ export default function TournamentCreate() {
         url: '/api/v1/tournament/scoring-templates',
         method: 'GET',
         data: {},
+        ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
       });
       const items = res?.data?.items || res?.data || [];
       setSavedScorecards(Array.isArray(items) ? items : []);
