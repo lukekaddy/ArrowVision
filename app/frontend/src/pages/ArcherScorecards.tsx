@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
-import { ClipboardList, Calendar, MapPin, ChevronDown, ChevronUp, Target, ArrowLeft } from 'lucide-react';
+import { ClipboardList, Calendar, MapPin, ChevronDown, ChevronUp, Target, ArrowLeft, Eye } from 'lucide-react';
 
 interface TournamentInfo {
   id: number;
@@ -13,6 +13,7 @@ interface TournamentInfo {
 }
 
 interface RegistrationInfo {
+  id: number;
   division: string;
   first_name?: string;
   last_name?: string;
@@ -198,6 +199,14 @@ export default function ArcherScorecards() {
                           ))}
                         </div>
                       )}
+                      {/* View Full Scorecard button */}
+                      <Link
+                        to={`/scorecard?tournamentId=${entry.tournament.id}&archerId=${entry.registration.id}&showTargets=true`}
+                        className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 font-medium hover:bg-emerald-500/30 transition-colors"
+                      >
+                        <Eye className="h-5 w-5" />
+                        View Full Scorecard & Replays
+                      </Link>
                     </div>
                   )}
                 </div>

@@ -4,7 +4,7 @@ import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
-import { Trophy, ClipboardList, BarChart3, Calendar, MapPin, Target, ArrowRight } from 'lucide-react';
+import { Trophy, ClipboardList, BarChart3, Calendar, MapPin, Target, ArrowRight, Eye } from 'lucide-react';
 
 interface TournamentInfo {
   id: number;
@@ -16,6 +16,7 @@ interface TournamentInfo {
 }
 
 interface RegistrationInfo {
+  id: number;
   division: string;
   group_number?: number;
   first_name?: string;
@@ -184,14 +185,23 @@ export default function ArcherHome() {
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-4 pt-3 border-t border-slate-700/50">
-                  <div className="flex items-center gap-2">
-                    <span className="text-2xl font-bold text-emerald-400">{entry.score_summary.total_score}</span>
-                    <span className="text-sm text-slate-400">pts</span>
+                <div className="flex items-center justify-between pt-3 border-t border-slate-700/50">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl font-bold text-emerald-400">{entry.score_summary.total_score}</span>
+                      <span className="text-sm text-slate-400">pts</span>
+                    </div>
+                    <div className="text-sm text-slate-400">
+                      {entry.score_summary.targets_scored} targets scored
+                    </div>
                   </div>
-                  <div className="text-sm text-slate-400">
-                    {entry.score_summary.targets_scored} targets scored
-                  </div>
+                  <Link
+                    to={`/scorecard?tournamentId=${entry.tournament.id}&archerId=${entry.registration.id}&showTargets=true`}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-sm font-medium hover:bg-emerald-500/30 transition-colors"
+                  >
+                    <Eye className="h-4 w-4" />
+                    View Scorecard
+                  </Link>
                 </div>
               </div>
             ))}
