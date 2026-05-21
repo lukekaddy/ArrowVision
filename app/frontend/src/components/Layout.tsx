@@ -15,13 +15,13 @@ const MAIN_NAV_LINKS: NavLink[] = [
   { to: '/', label: 'Home' },
   { to: '/create-tournament', label: 'Create Tournament' },
   { to: '/create-scorecard', label: 'Create Scorecard' },
+  { to: '/replay-camera', label: 'Replay Camera' },
   { to: '/leaderboard', label: 'Live Leaderboard' },
   { to: '/results', label: 'Results' },
 ];
 
 const ADMIN_LINKS: NavLink[] = [
   { to: '/dashboard', label: 'Dashboard' },
-  { to: '/admin/upload-replay', label: 'Upload Replay' },
 ];
 
 function getNavLinksForRole(role: string | null | undefined, isLoggedIn: boolean): NavLink[] {

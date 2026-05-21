@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ClipboardList, Crosshair, Target, ChevronRight, CheckCircle } from 'lucide-react';
+import { ClipboardList, Crosshair, Target, ChevronRight, CheckCircle, Play, X } from 'lucide-react';
 
 interface CourseConfig {
   course: number;
@@ -32,6 +32,10 @@ interface ScoringTemplate {
   score_values: number[];
 }
 
+interface ReplayInfo {
+  object_key: string;
+}
+
 export default function Scorecard() {
   const { user, login } = useAuth();
   const client = getClient();
@@ -46,6 +50,9 @@ export default function Scorecard() {
   const [showTargets, setShowTargets] = useState(false);
   const [scores, setScores] = useState<Record<number, number>>({});
   const [scoringTemplate, setScoringTemplate] = useState<ScoringTemplate | null>(null);
+  const [replayMap, setReplayMap] = useState<Record<number, string>>({});
+  const [replayModalUrl, setReplayModalUrl] = useState<string | null>(null);
+  const [replayModalTarget, setReplayModalTarget] = useState<number | null>(null);
   const restoredFromParams = useRef(false);
 
   const getStorageKey = useCallback(() => {
@@ -72,10 +79,65 @@ export default function Scorecard() {
     }
   }, [getStorageKey]);
 
+  const checkReplays = useCallback(async () => {
+    if (!selectedTournament || !selectedArcher) {
+      setReplayMap({});
+      return;
+    }
+    const courseNum = selectedCourse?.course || 1;
+    const targets = selectedCourse?.targets || selectedTournament.num_targets || 10;
+    const map: Record<number, string> = {};
+
+    for (let t = 1; t <= targets; t++) {
+      try {
+        const res = await client.apiCall.invoke({
+          url: '/api/v1/replays/get',
+          method: 'GET',
+          data: {
+            tournament_id: selectedTournament.id,
+            archer_id: selectedArcher.id,
+            course_number: courseNum,
+            target_number: t,
+          },
+        });
+        if (res?.data?.object_key) {
+          map[t] = res.data.object_key;
+        }
+      } catch {
+        // No replay for this target
+      }
+    }
+    setReplayMap(map);
+  }, [selectedTournament, selectedArcher, selectedCourse, client]);
+
+  const openReplayModal = async (targetNum: number) => {
+    const objectKey = replayMap[targetNum];
+    if (!objectKey) return;
+    try {
+      const res = await client.storage.getDownloadUrl({
+        bucket_name: 'arrow-replays',
+        object_key: objectKey,
+      });
+      if (res?.data?.download_url) {
+        setReplayModalUrl(res.data.download_url);
+        setReplayModalTarget(targetNum);
+      }
+    } catch {
+      // Could not get download URL
+    }
+  };
+
   // Load scores when filters change
   useEffect(() => {
     loadScores();
   }, [loadScores]);
+
+  // Check for replays when filters change
+  useEffect(() => {
+    if (showTargets) {
+      checkReplays();
+    }
+  }, [showTargets, checkReplays]);
 
   // Reload scores when window regains focus (returning from SmartScore)
   useEffect(() => {
@@ -324,34 +386,46 @@ export default function Scorecard() {
                   {Array.from({ length: maxTargets }, (_, i) => i + 1).map((targetNum) => {
                     const targetScore = scores[targetNum];
                     const isScored = targetScore !== undefined;
+                    const hasReplay = !!replayMap[targetNum];
                     return (
-                      <button
-                        key={targetNum}
-                        onClick={() => handleTargetTap(targetNum)}
-                        className="w-full flex items-center justify-between bg-slate-800/70 hover:bg-slate-700/80 border border-slate-700/50 hover:border-emerald-500/40 rounded-xl px-5 py-4 transition-all active:scale-[0.98] group"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isScored ? 'bg-emerald-500/20' : 'bg-slate-700/80 group-hover:bg-emerald-500/20'}`}>
-                            {isScored ? (
-                              <CheckCircle className="h-6 w-6 text-emerald-400" />
-                            ) : (
-                              <Crosshair className="h-5 w-5 text-slate-400 group-hover:text-emerald-400 transition-colors" />
-                            )}
-                          </div>
-                          <div className="text-left">
-                            <p className="text-white font-semibold text-lg">
-                              Target {targetNum}
-                              {isScored && (
-                                <span className="text-emerald-400 ml-2">— {targetScore === 0 ? 'Miss' : targetScore}</span>
+                      <div key={targetNum} className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleTargetTap(targetNum)}
+                          className="flex-1 flex items-center justify-between bg-slate-800/70 hover:bg-slate-700/80 border border-slate-700/50 hover:border-emerald-500/40 rounded-xl px-5 py-4 transition-all active:scale-[0.98] group"
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isScored ? 'bg-emerald-500/20' : 'bg-slate-700/80 group-hover:bg-emerald-500/20'}`}>
+                              {isScored ? (
+                                <CheckCircle className="h-6 w-6 text-emerald-400" />
+                              ) : (
+                                <Crosshair className="h-5 w-5 text-slate-400 group-hover:text-emerald-400 transition-colors" />
                               )}
-                            </p>
-                            <p className="text-slate-500 text-xs">
-                              {isScored ? 'Tap to re-score' : 'Tap to score'}
-                            </p>
+                            </div>
+                            <div className="text-left">
+                              <p className="text-white font-semibold text-lg">
+                                Target {targetNum}
+                                {isScored && (
+                                  <span className="text-emerald-400 ml-2">— {targetScore === 0 ? 'Miss' : targetScore}</span>
+                                )}
+                              </p>
+                              <p className="text-slate-500 text-xs">
+                                {isScored ? 'Tap to re-score' : 'Tap to score'}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                        <ChevronRight className="h-5 w-5 text-slate-600 group-hover:text-emerald-400 transition-colors" />
-                      </button>
+                          <ChevronRight className="h-5 w-5 text-slate-600 group-hover:text-emerald-400 transition-colors" />
+                        </button>
+                        {/* Replay icon */}
+                        {hasReplay && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openReplayModal(targetNum); }}
+                            className="w-11 h-11 flex-shrink-0 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center hover:bg-amber-500/30 transition-colors"
+                            title="View replay"
+                          >
+                            <Play className="h-5 w-5 text-amber-400" />
+                          </button>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
@@ -364,6 +438,31 @@ export default function Scorecard() {
                 >
                   ← Back to filters
                 </Button>
+              </div>
+            )}
+
+            {/* Replay Modal */}
+            {replayModalUrl && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                <div className="relative w-full max-w-lg bg-slate-900 rounded-2xl border border-slate-700 overflow-hidden">
+                  <div className="flex items-center justify-between p-4 border-b border-slate-700">
+                    <h3 className="text-white font-semibold">Target {replayModalTarget} Replay</h3>
+                    <button
+                      onClick={() => { setReplayModalUrl(null); setReplayModalTarget(null); }}
+                      className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center hover:bg-slate-700 transition-colors"
+                    >
+                      <X className="h-4 w-4 text-slate-300" />
+                    </button>
+                  </div>
+                  <div className="p-4">
+                    <video
+                      src={replayModalUrl}
+                      controls
+                      autoPlay
+                      className="w-full rounded-lg"
+                    />
+                  </div>
+                </div>
               </div>
             )}
           </>

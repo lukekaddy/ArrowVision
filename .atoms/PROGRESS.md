@@ -54,12 +54,19 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 - [x] Add role-based navigation in Layout/Header
 - [x] Add route protection for admin-only pages
 - [x] Add role selection on first login for new users
-
 - [x] Create storage bucket "arrow-replays" for video clips
 - [x] Create "replay_videos" database table
 - [x] Build POST /api/v1/replays/upload endpoint for video upload with metadata
 - [x] Build GET /api/v1/replays/get endpoint to retrieve replay by archer+target
 - [x] Update SmartScore page to fetch and display actual uploaded replay video
+
+- [x] Rename Upload Replay to "Replay Camera" and add to main nav tabs
+- [x] Build Replay Camera page with live camera preview, mic access, wake lock, target/shooter display, status
+- [x] Implement continuous video buffer (rolling 10s ring buffer using MediaRecorder)
+- [x] Implement sound-based impact detection (Web Audio API, sensitivity slider, cooldown)
+- [x] Implement replay clip generation (3s before + 3s after impact → MP4 blob)
+- [x] Implement auto-upload to cloud storage + database record creation
+- [x] Add scorecard integration (replay icon per target, inline video playback)
 
 ## Progress Log
 - Backend tables created: tournaments, tournament_archers, scores

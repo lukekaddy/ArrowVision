@@ -13,7 +13,7 @@ import Leaderboard from './pages/Leaderboard';
 import SmartScore from './pages/SmartScore';
 import Results from './pages/Results';
 import RoleSelection from './pages/RoleSelection';
-import AdminUploadReplay from './pages/AdminUploadReplay';
+import ReplayCamera from './pages/ReplayCamera';
 import CreateScorecard from './pages/CreateScorecard';
 
 const queryClient = new QueryClient();
@@ -29,7 +29,7 @@ const AppRoutes = () => (
     <Route path="/smart-score" element={<SmartScore />} />
     <Route path="/results" element={<Results />} />
     <Route path="/role-select" element={<RoleSelection />} />
-    <Route path="/admin/upload-replay" element={<AdminUploadReplay />} />
+    <Route path="/replay-camera" element={<ReplayCamera />} />
     <Route path="/auth/callback" element={<AuthCallback />} />
     <Route path="/auth/error" element={<AuthError />} />
   </Routes>
