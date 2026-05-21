@@ -5,6 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import text
+
 from core.database import get_db
 from routers.custom_auth import get_current_custom_user, UserInfo
 from services.replay_ops import ReplayOpsService
@@ -297,7 +299,8 @@ async def stream_replay(
         headers = {
             "Content-Disposition": f'inline; filename="{filename}"',
             "Accept-Ranges": "bytes",
-            "Cache-Control": "public, max-age=3600",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
             "Access-Control-Allow-Origin": "*",
         }
         if content_length:
@@ -314,3 +317,29 @@ async def stream_replay(
     except Exception as e:
         logger.error(f"[REPLAY STREAM] Error streaming replay: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/debug")
+async def debug_replays(
+    tournament_id: int = Query(...),
+    archer_id: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Debug: list all replay records for a tournament/archer combo."""
+    query = text(
+        "SELECT id, course_number, target_number, object_key, created_at, updated_at "
+        "FROM replay_videos WHERE tournament_id = :tournament_id AND archer_id = :archer_id "
+        "ORDER BY course_number, target_number"
+    )
+    result = await db.execute(query, {"tournament_id": tournament_id, "archer_id": archer_id})
+    rows = result.fetchall()
+    logger.info(
+        f"[REPLAY DEBUG] tournament={tournament_id} archer={archer_id} found {len(rows)} rows"
+    )
+    return [
+        {
+            "id": r[0], "course_number": r[1], "target_number": r[2],
+            "object_key": r[3], "created_at": str(r[4]), "updated_at": str(r[5])
+        }
+        for r in rows
+    ]

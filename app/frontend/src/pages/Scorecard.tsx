@@ -146,7 +146,8 @@ export default function Scorecard() {
       console.log('[Replay] Using streaming proxy for object_key:', objectKey);
       // Use the streaming proxy endpoint instead of presigned URL
       // This ensures correct Content-Type headers and avoids CORS/format issues
-      const streamUrl = `/api/v1/replays/stream?bucket_name=arrow-replays&object_key=${encodeURIComponent(objectKey)}`;
+      // Append cache-busting timestamp to avoid stale browser cache
+      const streamUrl = `/api/v1/replays/stream?bucket_name=arrow-replays&object_key=${encodeURIComponent(objectKey)}&t=${Date.now()}`;
       setReplayModalUrl(streamUrl);
       setReplayModalState('ready');
     } catch (err) {
