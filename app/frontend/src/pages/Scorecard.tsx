@@ -1,11 +1,11 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ClipboardList, Crosshair, Target, ChevronRight, CheckCircle, Play, X } from 'lucide-react';
+import { ClipboardList, Crosshair, Target, ChevronRight, CheckCircle, Play, X, ArrowLeft } from 'lucide-react';
 
 interface CourseConfig {
   course: number;
@@ -32,6 +32,7 @@ interface ScoringTemplate {
   score_values: number[];
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface ReplayInfo {
   object_key: string;
 }
@@ -58,6 +59,15 @@ export default function Scorecard() {
   const [replayModalState, setReplayModalState] = useState<ReplayModalState>('idle');
   const [replayError, setReplayError] = useState<string | null>(null);
   const restoredFromParams = useRef(false);
+  const [directModeLoading, setDirectModeLoading] = useState(false);
+
+  // Detect "direct mode" from URL params immediately (synchronous check)
+  const directMode = useMemo(() => {
+    const paramTournamentId = searchParams.get('tournamentId');
+    const paramArcherId = searchParams.get('archerId');
+    const paramShowTargets = searchParams.get('showTargets');
+    return !!(paramTournamentId && paramArcherId && paramShowTargets === 'true');
+  }, [searchParams]);
 
   const getStorageKey = useCallback(() => {
     if (!selectedTournament || !selectedArcher) return null;
@@ -212,19 +222,24 @@ export default function Scorecard() {
 
   useEffect(() => {
     const fetchTournaments = async () => {
-      try {
-        const res = await client.apiCall.invoke({ url: '/api/v1/tournament/public-list', method: 'GET', data: {} });
-        const items = res?.data?.items || [];
-        setTournaments(items);
+      // Restore state from URL params (when coming from ArcherHome or returning from SmartScore)
+      const paramTournamentId = searchParams.get('tournamentId');
+      const paramArcherId = searchParams.get('archerId');
+      const paramCourseNumber = searchParams.get('courseNumber');
+      const paramShowTargets = searchParams.get('showTargets');
 
-        // Restore state from URL params (when returning from SmartScore)
-        const paramTournamentId = searchParams.get('tournamentId');
-        const paramArcherId = searchParams.get('archerId');
-        const paramCourseNumber = searchParams.get('courseNumber');
-        const paramShowTargets = searchParams.get('showTargets');
+      const isDirectEntry = !!(paramTournamentId && paramArcherId && paramShowTargets === 'true');
 
-        if (paramTournamentId && paramArcherId && paramShowTargets === 'true' && !restoredFromParams.current) {
-          restoredFromParams.current = true;
+      if (isDirectEntry && !restoredFromParams.current) {
+        restoredFromParams.current = true;
+        setDirectModeLoading(true);
+
+        try {
+          // Fetch tournament list
+          const res = await client.apiCall.invoke({ url: '/api/v1/tournament/public-list', method: 'GET', data: {} });
+          const items = res?.data?.items || [];
+          setTournaments(items);
+
           const t = items.find((tour: Tournament) => tour.id === parseInt(paramTournamentId));
           if (t) {
             setSelectedTournament(t);
@@ -236,7 +251,7 @@ export default function Scorecard() {
             setCoursesConfig(parsed);
 
             if (paramCourseNumber) {
-              const c = parsed.find((c: CourseConfig) => c.course === parseInt(paramCourseNumber));
+              const c = parsed.find((cc: CourseConfig) => cc.course === parseInt(paramCourseNumber));
               setSelectedCourse(c || (parsed.length === 1 ? parsed[0] : null));
             } else if (parsed.length === 1) {
               setSelectedCourse(parsed[0]);
@@ -250,6 +265,7 @@ export default function Scorecard() {
               const a = archerList.find((ar: Archer) => ar.id === parseInt(paramArcherId));
               if (a) {
                 setSelectedArcher(a);
+                // Skip "Tap to View" step — go directly to target list
                 setShowTargets(true);
               }
             } catch {
@@ -268,9 +284,20 @@ export default function Scorecard() {
           }
           // Clear the search params from URL to avoid stale state on refresh
           setSearchParams({}, { replace: true });
+        } catch {
+          setTournaments([]);
+        } finally {
+          setDirectModeLoading(false);
         }
-      } catch {
-        setTournaments([]);
+      } else if (!restoredFromParams.current) {
+        // Normal mode: just fetch tournaments for the filter dropdowns
+        try {
+          const res = await client.apiCall.invoke({ url: '/api/v1/tournament/public-list', method: 'GET', data: {} });
+          const items = res?.data?.items || [];
+          setTournaments(items);
+        } catch {
+          setTournaments([]);
+        }
       }
     };
     fetchTournaments();
@@ -361,209 +388,232 @@ export default function Scorecard() {
           <ClipboardList className="h-8 w-8 text-emerald-400" /> Scorecard
         </h1>
 
-        {/* Tournament Select */}
-        <div className="mb-4">
-          <Select onValueChange={selectTournament}>
-            <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-12">
-              <SelectValue placeholder="Select Tournament" />
-            </SelectTrigger>
-            <SelectContent className="bg-slate-800 border-slate-700">
-              {tournaments.map((t) => (
-                <SelectItem key={t.id} value={t.id.toString()} className="text-white">{t.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {/* Direct mode loading state */}
+        {(directMode || directModeLoading) && !showTargets && (
+          <div className="flex flex-col items-center justify-center py-16">
+            <div className="w-12 h-12 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin mb-4" />
+            <p className="text-slate-400 text-sm">Loading scorecard...</p>
+          </div>
+        )}
 
-        {selectedTournament && (
+        {/* Filter UI - only shown when NOT in direct mode and not restored from params */}
+        {!directMode && !directModeLoading && !restoredFromParams.current && (
           <>
-            {/* Course Select (if multiple courses) */}
-            {coursesConfig.length > 1 && (
-              <div className="mb-4">
-                <Select onValueChange={selectCourse}>
-                  <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-12">
-                    <SelectValue placeholder="Select Course" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-slate-800 border-slate-700">
-                    {coursesConfig.map((c) => (
-                      <SelectItem key={c.course} value={c.course.toString()} className="text-white">
-                        {c.name || `Course ${c.course}`} ({c.targets} targets)
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
-            {/* Archer Select */}
-            <div className="mb-6">
-              <Select onValueChange={(v) => { setSelectedArcher(archers.find((a) => a.id === parseInt(v)) || null); setShowTargets(false); }}>
+            {/* Tournament Select */}
+            <div className="mb-4">
+              <Select onValueChange={selectTournament}>
                 <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-12">
-                  <SelectValue placeholder="Select Archer" />
+                  <SelectValue placeholder="Select Tournament" />
                 </SelectTrigger>
                 <SelectContent className="bg-slate-800 border-slate-700">
-                  {archers.map((a) => (
-                    <SelectItem key={a.id} value={a.id.toString()} className="text-white">{a.archer_name}</SelectItem>
+                  {tournaments.map((t) => (
+                    <SelectItem key={t.id} value={t.id.toString()} className="text-white">{t.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Tap to View Score Details */}
-            {filtersComplete && !showTargets && (
-              <button
-                onClick={() => setShowTargets(true)}
-                className="w-full bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-2 border-emerald-500/50 rounded-2xl p-8 text-center transition-all hover:border-emerald-400 hover:from-emerald-500/30 hover:to-emerald-600/20 active:scale-[0.98] group"
-              >
-                <Target className="h-14 w-14 text-emerald-400 mx-auto mb-4 group-hover:scale-110 transition-transform" />
-                <p className="text-2xl font-bold text-white mb-2">Tap to View Score Details</p>
-                <p className="text-slate-400 text-sm mb-3">
-                  {selectedArcher?.archer_name} · {selectedCourse?.name || `Course ${selectedCourse?.course || 1}`} · {maxTargets} targets
-                </p>
-                <p className="text-emerald-400 font-bold text-lg">Total Score: {totalScore}</p>
-              </button>
-            )}
+            {selectedTournament && (
+              <>
+                {/* Course Select (if multiple courses) */}
+                {coursesConfig.length > 1 && (
+                  <div className="mb-4">
+                    <Select onValueChange={selectCourse}>
+                      <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-12">
+                        <SelectValue placeholder="Select Course" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-slate-800 border-slate-700">
+                        {coursesConfig.map((c) => (
+                          <SelectItem key={c.course} value={c.course.toString()} className="text-white">
+                            {c.name || `Course ${c.course}`} ({c.targets} targets)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
-            {/* Scrollable Target List */}
-            {filtersComplete && showTargets && (
-              <div>
-                {/* Archer & Course Info Header */}
-                <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50 mb-4 text-center">
-                  <p className="text-white font-semibold text-lg">{selectedArcher?.archer_name}</p>
-                  <p className="text-emerald-400 text-sm">
-                    {selectedCourse?.name || `Course ${selectedCourse?.course || 1}`} · {maxTargets} targets
-                  </p>
-                  {scoringTemplate && (
-                    <p className="text-slate-400 text-xs mt-1">
-                      Scoring: {scoringTemplate.template_name} ({scoringTemplate.score_values.map(v => v === 0 ? 'Miss' : v).join('/')})
+                {/* Archer Select */}
+                <div className="mb-6">
+                  <Select onValueChange={(v) => { setSelectedArcher(archers.find((a) => a.id === parseInt(v)) || null); setShowTargets(false); }}>
+                    <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-12">
+                      <SelectValue placeholder="Select Archer" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-800 border-slate-700">
+                      {archers.map((a) => (
+                        <SelectItem key={a.id} value={a.id.toString()} className="text-white">{a.archer_name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Tap to View Score Details */}
+                {filtersComplete && !showTargets && (
+                  <button
+                    onClick={() => setShowTargets(true)}
+                    className="w-full bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border-2 border-emerald-500/50 rounded-2xl p-8 text-center transition-all hover:border-emerald-400 hover:from-emerald-500/30 hover:to-emerald-600/20 active:scale-[0.98] group"
+                  >
+                    <Target className="h-14 w-14 text-emerald-400 mx-auto mb-4 group-hover:scale-110 transition-transform" />
+                    <p className="text-2xl font-bold text-white mb-2">Tap to View Score Details</p>
+                    <p className="text-slate-400 text-sm mb-3">
+                      {selectedArcher?.archer_name} · {selectedCourse?.name || `Course ${selectedCourse?.course || 1}`} · {maxTargets} targets
                     </p>
-                  )}
-                  <p className="text-amber-400 font-bold text-lg mt-2">Total Score: {totalScore}</p>
-                </div>
-
-                {/* Target List */}
-                <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
-                  {Array.from({ length: maxTargets }, (_, i) => i + 1).map((targetNum) => {
-                    const targetScore = scores[targetNum];
-                    const isScored = targetScore !== undefined;
-                    const hasReplay = !!replayMap[targetNum];
-                    return (
-                      <div key={targetNum} className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleTargetTap(targetNum)}
-                          className="flex-1 flex items-center justify-between bg-slate-800/70 hover:bg-slate-700/80 border border-slate-700/50 hover:border-emerald-500/40 rounded-xl px-5 py-4 transition-all active:scale-[0.98] group"
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isScored ? 'bg-emerald-500/20' : 'bg-slate-700/80 group-hover:bg-emerald-500/20'}`}>
-                              {isScored ? (
-                                <CheckCircle className="h-6 w-6 text-emerald-400" />
-                              ) : (
-                                <Crosshair className="h-5 w-5 text-slate-400 group-hover:text-emerald-400 transition-colors" />
-                              )}
-                            </div>
-                            <div className="text-left">
-                              <p className="text-white font-semibold text-lg">
-                                Target {targetNum}
-                                {isScored && (
-                                  <span className="text-emerald-400 ml-2">— {targetScore === 0 ? 'Miss' : targetScore}</span>
-                                )}
-                              </p>
-                              <p className="text-slate-500 text-xs">
-                                {isScored ? 'Tap to re-score' : 'Tap to score'}
-                              </p>
-                            </div>
-                          </div>
-                          <ChevronRight className="h-5 w-5 text-slate-600 group-hover:text-emerald-400 transition-colors" />
-                        </button>
-                        {/* Replay icon */}
-                        {hasReplay && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); openReplayModal(targetNum); }}
-                            className="w-11 h-11 flex-shrink-0 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center hover:bg-amber-500/30 transition-colors"
-                            title="View replay"
-                          >
-                            <Play className="h-5 w-5 text-amber-400" />
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Back button */}
-                <Button
-                  onClick={() => setShowTargets(false)}
-                  variant="ghost"
-                  className="w-full mt-4 text-slate-400 hover:text-white"
-                >
-                  ← Back to filters
-                </Button>
-              </div>
-            )}
-
-            {/* Replay Modal */}
-            {(replayModalState === 'loading' || replayModalState === 'ready' || replayModalState === 'error') && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-                <div className="relative w-full max-w-lg bg-slate-900 rounded-2xl border border-slate-700 overflow-hidden">
-                  <div className="flex items-center justify-between p-4 border-b border-slate-700">
-                    <h3 className="text-white font-semibold">Target {replayModalTarget} Replay</h3>
-                    <button
-                      onClick={() => { setReplayModalUrl(null); setReplayModalTarget(null); setReplayModalState('idle'); setReplayError(null); }}
-                      className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center hover:bg-slate-700 transition-colors"
-                    >
-                      <X className="h-4 w-4 text-slate-300" />
-                    </button>
-                  </div>
-                  <div className="p-4">
-                    {replayModalState === 'loading' && (
-                      <div className="flex flex-col items-center justify-center py-12">
-                        <div className="w-10 h-10 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin mb-4" />
-                        <p className="text-slate-400 text-sm">Loading replay...</p>
-                      </div>
-                    )}
-                    {replayModalState === 'error' && (
-                      <div className="flex flex-col items-center justify-center py-12">
-                        <X className="h-10 w-10 text-red-400 mb-4" />
-                        <p className="text-red-400 text-sm text-center mb-4">{replayError || 'Failed to load replay.'}</p>
-                        <Button
-                          onClick={() => { if (replayModalTarget) openReplayModal(replayModalTarget); }}
-                          variant="outline"
-                          size="sm"
-                          className="border-slate-600 text-slate-300 hover:text-white hover:border-emerald-500"
-                        >
-                          Retry
-                        </Button>
-                      </div>
-                    )}
-                    {replayModalState === 'ready' && replayModalUrl && (
-                      <video
-                        key={`replay-${replayModalTarget}-${replayModalUrl}`}
-                        src={replayModalUrl}
-                        controls
-                        autoPlay
-                        playsInline
-                        preload="auto"
-                        className="w-full rounded-lg"
-                        ref={(el) => {
-                          // Belt-and-suspenders: explicitly load in webview/iframe contexts
-                          if (el) {
-                            el.load();
-                          }
-                        }}
-                        onError={(e) => {
-                          const videoEl = e.currentTarget;
-                          const mediaError = videoEl.error;
-                          console.error('[Replay] Video playback error:', mediaError?.code, mediaError?.message);
-                          setReplayModalState('error');
-                          setReplayError(`Video playback failed (code ${mediaError?.code || 'unknown'}). The clip may still be processing.`);
-                        }}
-                      />
-                    )}
-                  </div>
-                </div>
-              </div>
+                    <p className="text-emerald-400 font-bold text-lg">Total Score: {totalScore}</p>
+                  </button>
+                )}
+              </>
             )}
           </>
+        )}
+
+        {/* Scrollable Target List - shown in both direct mode (after load) and normal mode */}
+        {filtersComplete && showTargets && (
+          <div>
+            {/* Archer & Course Info Header */}
+            <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50 mb-4 text-center">
+              <p className="text-white font-semibold text-lg">{selectedArcher?.archer_name}</p>
+              <p className="text-emerald-400 text-sm">
+                {selectedTournament?.name && (
+                  <span className="block text-slate-300 text-xs mb-1">{selectedTournament.name}</span>
+                )}
+                {selectedCourse?.name || `Course ${selectedCourse?.course || 1}`} · {maxTargets} targets
+              </p>
+              {scoringTemplate && (
+                <p className="text-slate-400 text-xs mt-1">
+                  Scoring: {scoringTemplate.template_name} ({scoringTemplate.score_values.map(v => v === 0 ? 'Miss' : v).join('/')})
+                </p>
+              )}
+              <p className="text-amber-400 font-bold text-lg mt-2">Total Score: {totalScore}</p>
+            </div>
+
+            {/* Target List */}
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+              {Array.from({ length: maxTargets }, (_, i) => i + 1).map((targetNum) => {
+                const targetScore = scores[targetNum];
+                const isScored = targetScore !== undefined;
+                const hasReplay = !!replayMap[targetNum];
+                return (
+                  <div key={targetNum} className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleTargetTap(targetNum)}
+                      className="flex-1 flex items-center justify-between bg-slate-800/70 hover:bg-slate-700/80 border border-slate-700/50 hover:border-emerald-500/40 rounded-xl px-5 py-4 transition-all active:scale-[0.98] group"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors ${isScored ? 'bg-emerald-500/20' : 'bg-slate-700/80 group-hover:bg-emerald-500/20'}`}>
+                          {isScored ? (
+                            <CheckCircle className="h-6 w-6 text-emerald-400" />
+                          ) : (
+                            <Crosshair className="h-5 w-5 text-slate-400 group-hover:text-emerald-400 transition-colors" />
+                          )}
+                        </div>
+                        <div className="text-left">
+                          <p className="text-white font-semibold text-lg">
+                            Target {targetNum}
+                            {isScored && (
+                              <span className="text-emerald-400 ml-2">— {targetScore === 0 ? 'Miss' : targetScore}</span>
+                            )}
+                          </p>
+                          <p className="text-slate-500 text-xs">
+                            {isScored ? 'Tap to re-score' : 'Tap to score'}
+                          </p>
+                        </div>
+                      </div>
+                      <ChevronRight className="h-5 w-5 text-slate-600 group-hover:text-emerald-400 transition-colors" />
+                    </button>
+                    {/* Replay icon */}
+                    {hasReplay && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openReplayModal(targetNum); }}
+                        className="w-11 h-11 flex-shrink-0 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center hover:bg-amber-500/30 transition-colors"
+                        title="View replay"
+                      >
+                        <Play className="h-5 w-5 text-amber-400" />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Back button - navigates to archer home if came from there, otherwise back to filters */}
+            <Button
+              onClick={() => {
+                if (restoredFromParams.current) {
+                  navigate('/archer');
+                } else {
+                  setShowTargets(false);
+                }
+              }}
+              variant="ghost"
+              className="w-full mt-4 text-slate-400 hover:text-white gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              {restoredFromParams.current ? 'Back to My Tournaments' : 'Back to filters'}
+            </Button>
+          </div>
+        )}
+
+        {/* Replay Modal */}
+        {(replayModalState === 'loading' || replayModalState === 'ready' || replayModalState === 'error') && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+            <div className="relative w-full max-w-lg bg-slate-900 rounded-2xl border border-slate-700 overflow-hidden">
+              <div className="flex items-center justify-between p-4 border-b border-slate-700">
+                <h3 className="text-white font-semibold">Target {replayModalTarget} Replay</h3>
+                <button
+                  onClick={() => { setReplayModalUrl(null); setReplayModalTarget(null); setReplayModalState('idle'); setReplayError(null); }}
+                  className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center hover:bg-slate-700 transition-colors"
+                >
+                  <X className="h-4 w-4 text-slate-300" />
+                </button>
+              </div>
+              <div className="p-4">
+                {replayModalState === 'loading' && (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <div className="w-10 h-10 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin mb-4" />
+                    <p className="text-slate-400 text-sm">Loading replay...</p>
+                  </div>
+                )}
+                {replayModalState === 'error' && (
+                  <div className="flex flex-col items-center justify-center py-12">
+                    <X className="h-10 w-10 text-red-400 mb-4" />
+                    <p className="text-red-400 text-sm text-center mb-4">{replayError || 'Failed to load replay.'}</p>
+                    <Button
+                      onClick={() => { if (replayModalTarget) openReplayModal(replayModalTarget); }}
+                      variant="outline"
+                      size="sm"
+                      className="border-slate-600 text-slate-300 hover:text-white hover:border-emerald-500"
+                    >
+                      Retry
+                    </Button>
+                  </div>
+                )}
+                {replayModalState === 'ready' && replayModalUrl && (
+                  <video
+                    key={`replay-${replayModalTarget}-${replayModalUrl}`}
+                    src={replayModalUrl}
+                    controls
+                    autoPlay
+                    playsInline
+                    preload="auto"
+                    className="w-full rounded-lg"
+                    ref={(el) => {
+                      // Belt-and-suspenders: explicitly load in webview/iframe contexts
+                      if (el) {
+                        el.load();
+                      }
+                    }}
+                    onError={(e) => {
+                      const videoEl = e.currentTarget;
+                      const mediaError = videoEl.error;
+                      console.error('[Replay] Video playback error:', mediaError?.code, mediaError?.message);
+                      setReplayModalState('error');
+                      setReplayError(`Video playback failed (code ${mediaError?.code || 'unknown'}). The clip may still be processing.`);
+                    }}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </Layout>
