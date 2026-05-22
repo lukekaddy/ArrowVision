@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
@@ -29,17 +29,28 @@ interface Archer {
 type CameraStatus = 'idle' | 'requesting' | 'active' | 'error';
 type RecordingStatus = 'idle' | 'listening' | 'triggered' | 'uploading' | 'success' | 'error';
 
+// Detection state machine
+type DetectionState = 'STABILIZING' | 'WATCHING' | 'TRIGGERED';
+
 // Minimum clip size in bytes (50KB) - anything smaller is likely corrupted/empty
 const MIN_CLIP_SIZE_BYTES = 50 * 1024;
 // Cooldown duration in ms after a trigger before new triggers are accepted
-// Must be longer than post-trigger recording (3s) + processing time
 const TRIGGER_COOLDOWN_MS = 8000;
 // Post-trigger recording duration in ms
 const POST_TRIGGER_DURATION_MS = 3000;
-// Motion detection interval in ms
-const MOTION_DETECT_INTERVAL_MS = 150;
-// Pixel intensity change threshold (0-255) to consider a pixel as "changed"
-const PIXEL_CHANGE_THRESHOLD = 30;
+// Motion detection interval in ms (faster for arrow detection)
+const MOTION_DETECT_INTERVAL_MS = 50;
+// Analysis canvas dimensions (smaller for speed)
+const ANALYSIS_WIDTH = 120;
+const ANALYSIS_HEIGHT = 90;
+// Rolling average window size (number of frames to track)
+const ROLLING_WINDOW_SIZE = 20;
+// Time scene must be stable before entering WATCHING state (ms)
+const STABILIZE_DURATION_MS = 1500;
+// Shake threshold - rolling average above this means camera is shaking
+const SHAKE_THRESHOLD = 0.01; // 1%
+// Default trigger sensitivity (baseline comparison threshold)
+const DEFAULT_SENSITIVITY = 0.03; // 3%
 
 export default function ReplayCamera() {
   const { user, token } = useAuth();
@@ -52,14 +63,21 @@ export default function ReplayCamera() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const motionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const prevFrameDataRef = useRef<Uint8Array | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
-  const cooldownRef = useRef<boolean>(false);
   const triggerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isListeningRef = useRef<boolean>(false);
   // Lock that prevents ANY new trigger processing while a clip is being recorded/assembled/uploaded
   const isRecordingClipRef = useRef<boolean>(false);
-  // Refs to hold current values for async closures (fixes stale state in uploads)
+
+  // Detection state machine refs
+  const detectionStateRef = useRef<DetectionState>('STABILIZING');
+  const baselineFrameRef = useRef<Uint8Array | null>(null);
+  const prevFrameDataRef = useRef<Uint8Array | null>(null);
+  const rollingMotionRef = useRef<number[]>([]);
+  const stableStartTimeRef = useRef<number | null>(null);
+  const baselineAgeRef = useRef<number>(0); // ms since baseline was set
+
+  // Refs to hold current values for async closures
   const targetNumberRef = useRef<number>(1);
   const selectedTournamentRef = useRef<Tournament | null>(null);
   const selectedArcherRef = useRef<Archer | null>(null);
@@ -70,8 +88,10 @@ export default function ReplayCamera() {
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>('idle');
   const [recordingStatus, setRecordingStatus] = useState<RecordingStatus>('idle');
   const [statusMessage, setStatusMessage] = useState('');
-  const [sensitivity, setSensitivity] = useState(0.05); // 5% of pixels must change
+  const [sensitivity, setSensitivity] = useState(DEFAULT_SENSITIVITY);
   const [currentMotionLevel, setCurrentMotionLevel] = useState(0);
+  const [detectionState, setDetectionState] = useState<DetectionState>('STABILIZING');
+  const [baselineAge, setBaselineAge] = useState(0);
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
   const [coursesConfig, setCoursesConfig] = useState<CourseConfig[]>([]);
@@ -81,14 +101,18 @@ export default function ReplayCamera() {
   const [targetNumber, setTargetNumber] = useState(1);
   const [clipCount, setClipCount] = useState(0);
 
-  // Keep refs in sync with state (so async closures always get current values)
+  // Keep refs in sync with state
   useEffect(() => { targetNumberRef.current = targetNumber; }, [targetNumber]);
   useEffect(() => { selectedTournamentRef.current = selectedTournament; }, [selectedTournament]);
   useEffect(() => { selectedArcherRef.current = selectedArcher; }, [selectedArcher]);
   useEffect(() => { selectedCourseRef.current = selectedCourse; }, [selectedCourse]);
   useEffect(() => { tokenRef.current = token ?? null; }, [token]);
 
-  // Fetch tournaments on mount (only if logged in)
+  // Use a ref for sensitivity so the motion detection loop always reads the latest value
+  const sensitivityRef = useRef(sensitivity);
+  useEffect(() => { sensitivityRef.current = sensitivity; }, [sensitivity]);
+
+  // Fetch tournaments on mount
   useEffect(() => {
     const fetchTournaments = async () => {
       try {
@@ -107,6 +131,8 @@ export default function ReplayCamera() {
       stopEverything();
     };
   }, []);
+
+  const dataPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopEverything = () => {
     if (motionIntervalRef.current) {
@@ -133,6 +159,10 @@ export default function ReplayCamera() {
       triggerTimeoutRef.current = null;
     }
     prevFrameDataRef.current = null;
+    baselineFrameRef.current = null;
+    rollingMotionRef.current = [];
+    stableStartTimeRef.current = null;
+    detectionStateRef.current = 'STABILIZING';
     isListeningRef.current = false;
     isRecordingClipRef.current = false;
   };
@@ -153,11 +183,7 @@ export default function ReplayCamera() {
   };
 
   const getSupportedMimeType = (): string => {
-    // On iOS Safari, mp4 is the only supported format for MediaRecorder
-    const iosTypes = [
-      'video/mp4',
-      'video/mp4;codecs=avc1',
-    ];
+    const iosTypes = ['video/mp4', 'video/mp4;codecs=avc1'];
     const defaultTypes = [
       'video/webm;codecs=vp8,opus',
       'video/webm;codecs=vp9,opus',
@@ -168,7 +194,6 @@ export default function ReplayCamera() {
     for (const type of types) {
       if (MediaRecorder.isTypeSupported(type)) return type;
     }
-    // Last resort: try without specifying mimeType
     return '';
   };
 
@@ -177,33 +202,27 @@ export default function ReplayCamera() {
     try {
       let stream: MediaStream;
       try {
-        // First try exact 'environment' to force the rear camera on iOS
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { exact: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: true,
         });
       } catch {
-        // Fallback: some devices don't support exact constraint, use ideal instead
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: true,
         });
       }
       streamRef.current = stream;
-
-      // Set status to 'active' FIRST so the <video> element renders in the DOM
       setCameraStatus('active');
 
-      // Wait a tick for React to render the video element
       await new Promise(resolve => setTimeout(resolve, 50));
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        // iOS Safari needs explicit play after srcObject assignment
         try {
           await videoRef.current.play();
         } catch {
-          // play() can fail silently on some browsers, video should still display
+          // play() can fail silently
         }
       }
 
@@ -218,8 +237,6 @@ export default function ReplayCamera() {
     }
   };
 
-  const dataPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
   const startRecording = (stream: MediaStream) => {
     const mimeType = getSupportedMimeType();
 
@@ -230,7 +247,6 @@ export default function ReplayCamera() {
       if (mimeType) options.mimeType = mimeType;
       recorder = new MediaRecorder(stream, options);
     } catch {
-      // If options fail, try bare MediaRecorder
       try {
         recorder = new MediaRecorder(stream);
       } catch (e2) {
@@ -243,49 +259,52 @@ export default function ReplayCamera() {
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) {
         chunksRef.current.push(e.data);
-        // Keep only last 12 seconds worth of chunks (extra buffer for safety)
+        // Keep only last 12 seconds worth of chunks
         if (chunksRef.current.length > 12) {
           chunksRef.current = chunksRef.current.slice(-12);
         }
       }
     };
 
-    // On iOS, timeslice in start() is unreliable. Use requestData() polling instead.
     if (isIOS()) {
-      recorder.start(); // Start without timeslice
-      // Poll for data every 1 second
+      recorder.start();
       dataPollingRef.current = setInterval(() => {
         if (recorder.state === 'recording') {
-          try {
-            recorder.requestData();
-          } catch {
-            // requestData may throw if recorder is in wrong state
-          }
+          try { recorder.requestData(); } catch { /* ignore */ }
         }
       }, 1000);
     } else {
-      recorder.start(1000); // 1-second chunks on non-iOS
+      recorder.start(1000);
     }
 
     mediaRecorderRef.current = recorder;
     setRecordingStatus('listening');
     isListeningRef.current = true;
+
+    // Reset detection state
+    detectionStateRef.current = 'STABILIZING';
+    setDetectionState('STABILIZING');
+    baselineFrameRef.current = null;
+    prevFrameDataRef.current = null;
+    rollingMotionRef.current = [];
+    stableStartTimeRef.current = null;
   };
 
-  // Use a ref for sensitivity so the motion detection loop always reads the latest value
-  const sensitivityRef = useRef(sensitivity);
-  useEffect(() => { sensitivityRef.current = sensitivity; }, [sensitivity]);
-
   const startMotionDetection = () => {
-    // Clear any existing interval
     if (motionIntervalRef.current) {
       clearInterval(motionIntervalRef.current);
     }
-
     motionIntervalRef.current = setInterval(() => {
       detectMotion();
     }, MOTION_DETECT_INTERVAL_MS);
   };
+
+  const getRollingAverage = useCallback((): number => {
+    const arr = rollingMotionRef.current;
+    if (arr.length === 0) return 0;
+    const sum = arr.reduce((a, b) => a + b, 0);
+    return sum / arr.length;
+  }, []);
 
   const detectMotion = () => {
     const video = videoRef.current;
@@ -295,77 +314,162 @@ export default function ReplayCamera() {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
-    // Set canvas to a reduced resolution for performance
-    const analysisWidth = 160;
-    const analysisHeight = 120;
-    canvas.width = analysisWidth;
-    canvas.height = analysisHeight;
+    canvas.width = ANALYSIS_WIDTH;
+    canvas.height = ANALYSIS_HEIGHT;
 
     // Draw current video frame to canvas
-    ctx.drawImage(video, 0, 0, analysisWidth, analysisHeight);
+    ctx.drawImage(video, 0, 0, ANALYSIS_WIDTH, ANALYSIS_HEIGHT);
 
-    // Define detection zone: center 60% of the frame
-    const zoneX = Math.floor(analysisWidth * 0.2);
-    const zoneY = Math.floor(analysisHeight * 0.2);
-    const zoneW = Math.floor(analysisWidth * 0.6);
-    const zoneH = Math.floor(analysisHeight * 0.6);
+    // Detection zone: center 60% of the frame
+    const zoneX = Math.floor(ANALYSIS_WIDTH * 0.2);
+    const zoneY = Math.floor(ANALYSIS_HEIGHT * 0.2);
+    const zoneW = Math.floor(ANALYSIS_WIDTH * 0.6);
+    const zoneH = Math.floor(ANALYSIS_HEIGHT * 0.6);
 
-    // Get pixel data from detection zone only
     const imageData = ctx.getImageData(zoneX, zoneY, zoneW, zoneH);
-    const pixels = imageData.data; // RGBA array
+    const pixels = imageData.data;
 
-    // Convert to grayscale array for comparison
-    const totalPixels = zoneW * zoneH;
-    const currentGrayscale = new Uint8Array(totalPixels);
-    for (let i = 0; i < totalPixels; i++) {
-      const offset = i * 4;
-      // Fast grayscale: (R + G + B) / 3
-      currentGrayscale[i] = Math.round((pixels[offset] + pixels[offset + 1] + pixels[offset + 2]) / 3);
+    // Convert to grayscale, sampling every other pixel (skip odd rows and columns) for 4x speed
+    const sampledWidth = Math.floor(zoneW / 2);
+    const sampledHeight = Math.floor(zoneH / 2);
+    const totalSampled = sampledWidth * sampledHeight;
+    const currentGrayscale = new Uint8Array(totalSampled);
+
+    let idx = 0;
+    for (let row = 0; row < zoneH; row += 2) {
+      for (let col = 0; col < zoneW; col += 2) {
+        const pixelIdx = (row * zoneW + col) * 4;
+        currentGrayscale[idx] = Math.round(
+          (pixels[pixelIdx] + pixels[pixelIdx + 1] + pixels[pixelIdx + 2]) / 3
+        );
+        idx++;
+      }
     }
 
     const prevFrame = prevFrameDataRef.current;
-    if (prevFrame && prevFrame.length === totalPixels) {
-      // Compare with previous frame
-      let changedPixels = 0;
-      for (let i = 0; i < totalPixels; i++) {
-        const diff = Math.abs(currentGrayscale[i] - prevFrame[i]);
-        if (diff > PIXEL_CHANGE_THRESHOLD) {
-          changedPixels++;
+    const now = Date.now();
+
+    // --- Frame-to-frame motion (for shake detection) ---
+    let frameToFrameMotion = 0;
+    if (prevFrame && prevFrame.length === totalSampled) {
+      let diffSum = 0;
+      for (let i = 0; i < totalSampled; i++) {
+        diffSum += Math.abs(currentGrayscale[i] - prevFrame[i]);
+      }
+      // Normalize: max possible diff per pixel is 255, so ratio = diffSum / (totalSampled * 255)
+      frameToFrameMotion = diffSum / (totalSampled * 255);
+    }
+
+    // --- Baseline comparison (for impact detection) ---
+    let baselineMotion = 0;
+    const baseline = baselineFrameRef.current;
+    if (baseline && baseline.length === totalSampled) {
+      let diffSum = 0;
+      for (let i = 0; i < totalSampled; i++) {
+        diffSum += Math.abs(currentGrayscale[i] - baseline[i]);
+      }
+      baselineMotion = diffSum / (totalSampled * 255);
+    }
+
+    // Update rolling motion window
+    rollingMotionRef.current.push(frameToFrameMotion);
+    if (rollingMotionRef.current.length > ROLLING_WINDOW_SIZE) {
+      rollingMotionRef.current.shift();
+    }
+
+    const rollingAvg = getRollingAverage();
+
+    // Update UI state (use baseline motion for the meter since that's what triggers)
+    setCurrentMotionLevel(baselineMotion);
+
+    // Update baseline age
+    baselineAgeRef.current += MOTION_DETECT_INTERVAL_MS;
+    // Update displayed baseline age every ~500ms to avoid too many re-renders
+    if (baselineAgeRef.current % 500 < MOTION_DETECT_INTERVAL_MS) {
+      setBaselineAge(baselineAgeRef.current);
+    }
+
+    // --- State machine logic ---
+    const currentState = detectionStateRef.current;
+
+    if (currentState === 'STABILIZING') {
+      // Check if scene has been stable long enough to transition to WATCHING
+      if (rollingAvg < SHAKE_THRESHOLD && rollingMotionRef.current.length >= 5) {
+        if (stableStartTimeRef.current === null) {
+          stableStartTimeRef.current = now;
+        } else if (now - stableStartTimeRef.current >= STABILIZE_DURATION_MS) {
+          // Scene has been stable for required duration — update baseline and enter WATCHING
+          baselineFrameRef.current = new Uint8Array(currentGrayscale);
+          baselineAgeRef.current = 0;
+          setBaselineAge(0);
+          detectionStateRef.current = 'WATCHING';
+          setDetectionState('WATCHING');
+          stableStartTimeRef.current = null;
+          console.log('[ReplayCamera] State: STABILIZING → WATCHING (baseline set)');
+        }
+      } else {
+        // Reset stable timer if motion detected
+        stableStartTimeRef.current = null;
+      }
+    } else if (currentState === 'WATCHING') {
+      // If camera starts shaking (rolling avg exceeds shake threshold), go back to STABILIZING
+      if (rollingAvg > SHAKE_THRESHOLD * 2) {
+        detectionStateRef.current = 'STABILIZING';
+        setDetectionState('STABILIZING');
+        stableStartTimeRef.current = null;
+        console.log('[ReplayCamera] State: WATCHING → STABILIZING (shake detected)');
+        // Store current frame for next comparison
+        prevFrameDataRef.current = currentGrayscale;
+        return;
+      }
+
+      // Continuously update baseline if scene remains very stable (rolling avg < 0.5%)
+      // This keeps baseline fresh so gradual lighting changes don't cause false triggers
+      if (rollingAvg < SHAKE_THRESHOLD * 0.5 && baselineAgeRef.current > 3000) {
+        baselineFrameRef.current = new Uint8Array(currentGrayscale);
+        baselineAgeRef.current = 0;
+        setBaselineAge(0);
+      }
+
+      // Check for impact: sudden spike in baseline comparison while frame-to-frame was low
+      // The key: baseline motion exceeds sensitivity AND the rolling average was low (scene was still)
+      if (
+        isListeningRef.current &&
+        !isRecordingClipRef.current &&
+        baselineMotion > sensitivityRef.current &&
+        rollingAvg < SHAKE_THRESHOLD
+      ) {
+        // Additional check: the frame-to-frame motion for THIS frame should be notable
+        // (distinguishes "arrow appeared" from gradual drift)
+        if (frameToFrameMotion > sensitivityRef.current * 0.3) {
+          triggerImpact();
+          prevFrameDataRef.current = currentGrayscale;
+          return;
         }
       }
-
-      const changeRatio = changedPixels / totalPixels;
-      setCurrentMotionLevel(changeRatio);
-
-      // Check if motion exceeds threshold
-      // CRITICAL: Also check isRecordingClipRef to prevent triggers during clip assembly
-      if (isListeningRef.current && !cooldownRef.current && !isRecordingClipRef.current && changeRatio > sensitivityRef.current) {
-        triggerImpact();
-      }
     }
+    // TRIGGERED state: do nothing, wait for clip to finish
 
     // Store current frame for next comparison
     prevFrameDataRef.current = currentGrayscale;
   };
 
   const triggerImpact = () => {
-    // Double-check the recording clip lock to prevent rapid double-triggers
-    if (isRecordingClipRef.current || cooldownRef.current) {
-      console.log('[ReplayCamera] Trigger ignored — clip recording in progress or cooldown active');
+    if (isRecordingClipRef.current) {
+      console.log('[ReplayCamera] Trigger ignored — clip recording in progress');
       return;
     }
 
     // Lock everything immediately
     isRecordingClipRef.current = true;
-    cooldownRef.current = true;
     isListeningRef.current = false;
+    detectionStateRef.current = 'TRIGGERED';
+    setDetectionState('TRIGGERED');
     setRecordingStatus('triggered');
-    setStatusMessage('Motion detected! Capturing clip...');
+    setStatusMessage('Impact detected! Capturing clip...');
 
-    console.log('[ReplayCamera] Motion triggered. Recording post-impact for', POST_TRIGGER_DURATION_MS, 'ms');
+    console.log('[ReplayCamera] Impact triggered. Recording post-impact for', POST_TRIGGER_DURATION_MS, 'ms');
 
-    // Wait for post-impact footage. This timeout MUST NOT be cancelled by anything
-    // except stopEverything() (unmount/stop button).
     triggerTimeoutRef.current = setTimeout(() => {
       console.log('[ReplayCamera] Post-trigger period complete. Generating clip...');
       generateClip();
@@ -380,13 +484,11 @@ export default function ReplayCamera() {
       return;
     }
 
-    // Stop the data polling interval (iOS)
     if (dataPollingRef.current) {
       clearInterval(dataPollingRef.current);
       dataPollingRef.current = null;
     }
 
-    // Request final data chunk before stopping
     try {
       if (recorder.state === 'recording') {
         recorder.requestData();
@@ -395,24 +497,20 @@ export default function ReplayCamera() {
       // May throw on some browsers
     }
 
-    // Small delay to allow the final ondataavailable to fire
     await new Promise(resolve => setTimeout(resolve, 200));
 
-    // Wait for the recorder to fully stop and flush remaining data
     await new Promise<void>((resolve) => {
       recorder.onstop = () => resolve();
       try {
         recorder.stop();
       } catch {
-        // If stop fails, resolve anyway
         resolve();
       }
     });
 
-    // Take the last 6 seconds of chunks (3 before trigger + 3 after)
     const totalChunks = chunksRef.current.length;
     const clipChunks = chunksRef.current.slice(-6);
-    
+
     console.log('[ReplayCamera] Clip generation:', {
       totalChunksInBuffer: totalChunks,
       chunksUsedForClip: clipChunks.length,
@@ -437,7 +535,6 @@ export default function ReplayCamera() {
       numChunks: clipChunks.length,
     });
 
-    // Validate minimum clip size — too small means corrupted/empty video
     if (clipBlob.size < MIN_CLIP_SIZE_BYTES) {
       console.warn(
         `[ReplayCamera] Clip too small (${clipBlob.size} bytes / ${(clipBlob.size / 1024).toFixed(1)} KB). ` +
@@ -453,7 +550,6 @@ export default function ReplayCamera() {
       return;
     }
 
-    // Upload if context is set — use refs for current values
     if (selectedTournamentRef.current && selectedArcherRef.current) {
       await uploadClip(clipBlob);
     } else {
@@ -464,7 +560,6 @@ export default function ReplayCamera() {
   };
 
   const uploadClip = async (clipBlob: Blob) => {
-    // Check if user is logged in before uploading
     if (!user) {
       setStatusMessage('Sign in to save clips to cloud.');
       setRecordingStatus('error');
@@ -475,7 +570,6 @@ export default function ReplayCamera() {
     setRecordingStatus('uploading');
     setStatusMessage('Uploading replay...');
 
-    // Read current values from refs to avoid stale closure issues
     const currentTarget = targetNumberRef.current;
     const currentTournament = selectedTournamentRef.current;
     const currentArcher = selectedArcherRef.current;
@@ -483,7 +577,6 @@ export default function ReplayCamera() {
     const currentToken = tokenRef.current;
     const courseNum = currentCourse?.course || 1;
     const ext = clipBlob.type.includes('webm') ? 'webm' : 'mp4';
-    // Include timestamp in object key to avoid CDN/cache issues on re-upload
     const timestamp = Date.now();
     const objectKey = `replays/${currentTournament!.id}/${currentArcher!.id}/course${courseNum}_target${currentTarget}_${timestamp}.${ext}`;
 
@@ -501,7 +594,6 @@ export default function ReplayCamera() {
     });
 
     try {
-      // Step 1: Get a presigned upload URL via custom backend endpoint (bypasses OIDC auth)
       console.log('[ReplayCamera] Step 1: Getting upload URL via custom endpoint...');
       const uploadRes = await client.apiCall.invoke({
         url: '/api/v1/replays/get-upload-url',
@@ -516,7 +608,6 @@ export default function ReplayCamera() {
         throw new Error('Failed to get upload URL from storage. Bucket may not exist.');
       }
 
-      // Step 2: Upload the file directly to the presigned URL
       console.log('[ReplayCamera] Step 2: Uploading blob via PUT...', { size: clipBlob.size });
       const putResponse = await fetch(uploadUrl, {
         method: 'PUT',
@@ -530,8 +621,6 @@ export default function ReplayCamera() {
         throw new Error(`Storage PUT failed: ${putResponse.status} ${errText.substring(0, 200)}`);
       }
 
-      // Step 3: Save metadata to database via custom API
-      // The backend /save endpoint will delete the old storage file if the key changed
       console.log('[ReplayCamera] Step 3: Saving metadata to /api/v1/replays/save...');
       const savePayload = {
         tournament_id: currentTournament!.id,
@@ -554,7 +643,6 @@ export default function ReplayCamera() {
         console.warn('[ReplayCamera] Save response missing expected fields:', saveRes?.data);
       }
 
-      // Small delay to ensure backend has fully committed before showing success
       await new Promise(resolve => setTimeout(resolve, 500));
 
       setRecordingStatus('success');
@@ -565,7 +653,6 @@ export default function ReplayCamera() {
       });
       setClipCount(prev => prev + 1);
 
-      // Auto-increment target
       const maxTargets = currentCourse?.targets || 20;
       if (currentTarget < maxTargets) {
         setTargetNumber(currentTarget + 1);
@@ -589,14 +676,15 @@ export default function ReplayCamera() {
     // Release the clip recording lock
     isRecordingClipRef.current = false;
 
-    // Reset previous frame data so we don't get a false trigger from the frame gap
+    // Reset detection state — force back to STABILIZING so camera must be still before next trigger
     prevFrameDataRef.current = null;
-
-    // Keep cooldown active for a bit longer to prevent immediate re-triggers
-    setTimeout(() => {
-      cooldownRef.current = false;
-      console.log('[ReplayCamera] Cooldown released. Ready for next trigger.');
-    }, TRIGGER_COOLDOWN_MS - POST_TRIGGER_DURATION_MS);
+    baselineFrameRef.current = null;
+    rollingMotionRef.current = [];
+    stableStartTimeRef.current = null;
+    detectionStateRef.current = 'STABILIZING';
+    setDetectionState('STABILIZING');
+    baselineAgeRef.current = 0;
+    setBaselineAge(0);
 
     // Restart recording if stream is still active
     if (streamRef.current && streamRef.current.active) {
@@ -635,10 +723,28 @@ export default function ReplayCamera() {
     setTargetNumber(1);
   };
 
+  const getDetectionStateColor = () => {
+    switch (detectionState) {
+      case 'WATCHING': return 'bg-emerald-500';
+      case 'STABILIZING': return 'bg-amber-500';
+      case 'TRIGGERED': return 'bg-red-500';
+      default: return 'bg-slate-500';
+    }
+  };
+
+  const getDetectionStateLabel = () => {
+    switch (detectionState) {
+      case 'WATCHING': return 'Watching';
+      case 'STABILIZING': return 'Stabilizing...';
+      case 'TRIGGERED': return 'Recording!';
+      default: return 'Idle';
+    }
+  };
+
   const getStatusColor = () => {
     switch (recordingStatus) {
       case 'listening': return 'bg-emerald-500';
-      case 'triggered': return 'bg-amber-500';
+      case 'triggered': return 'bg-red-500';
       case 'uploading': return 'bg-blue-500';
       case 'success': return 'bg-emerald-500';
       case 'error': return 'bg-red-500';
@@ -648,8 +754,8 @@ export default function ReplayCamera() {
 
   const getStatusLabel = () => {
     switch (recordingStatus) {
-      case 'listening': return 'Watching';
-      case 'triggered': return 'Triggered!';
+      case 'listening': return getDetectionStateLabel();
+      case 'triggered': return 'Recording!';
       case 'uploading': return 'Uploading';
       case 'success': return 'Saved';
       case 'error': return 'Error';
@@ -658,11 +764,19 @@ export default function ReplayCamera() {
   };
 
   const getSensitivityLabel = () => {
-    if (sensitivity < 0.02) return 'Ultra';
-    if (sensitivity < 0.04) return 'High';
-    if (sensitivity < 0.08) return 'Medium';
-    if (sensitivity < 0.15) return 'Low';
+    if (sensitivity < 0.015) return 'Ultra';
+    if (sensitivity < 0.025) return 'High';
+    if (sensitivity < 0.05) return 'Medium';
+    if (sensitivity < 0.10) return 'Low';
     return 'Very Low';
+  };
+
+  const formatBaselineAge = () => {
+    if (!baselineFrameRef.current) return 'None';
+    const seconds = Math.floor(baselineAge / 1000);
+    if (seconds < 1) return 'Just set';
+    if (seconds < 60) return `${seconds}s ago`;
+    return `${Math.floor(seconds / 60)}m ago`;
   };
 
   return (
@@ -808,23 +922,32 @@ export default function ReplayCamera() {
             {/* Status Overlay */}
             {cameraStatus === 'active' && (
               <>
-                {/* Top-left status badge */}
+                {/* Top-left detection state badge */}
                 <div className="absolute top-3 left-3 flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded-full ${getStatusColor()} ${recordingStatus === 'listening' ? 'animate-pulse' : ''}`} />
+                  <div className={`w-3 h-3 rounded-full ${getDetectionStateColor()} ${detectionState === 'WATCHING' ? 'animate-pulse' : ''}`} />
                   <span className="text-white text-sm font-medium bg-black/50 px-2 py-0.5 rounded">
                     {getStatusLabel()}
                   </span>
                 </div>
 
-                {/* Top-right target info */}
-                <div className="absolute top-3 right-3 bg-black/50 px-3 py-1 rounded text-white text-sm">
-                  T{targetNumber} {selectedArcher ? `• ${selectedArcher.archer_name}` : ''}
+                {/* Top-right target info + baseline age */}
+                <div className="absolute top-3 right-3 flex flex-col items-end gap-1">
+                  <div className="bg-black/50 px-3 py-1 rounded text-white text-sm">
+                    T{targetNumber} {selectedArcher ? `• ${selectedArcher.archer_name}` : ''}
+                  </div>
+                  <div className="bg-black/50 px-2 py-0.5 rounded text-slate-300 text-xs">
+                    Baseline: {formatBaselineAge()}
+                  </div>
                 </div>
 
                 {/* Detection zone indicator (center 60%) */}
                 <div className="absolute inset-0 pointer-events-none">
                   <div
-                    className="absolute border border-emerald-400/30 rounded"
+                    className={`absolute border rounded transition-colors duration-300 ${
+                      detectionState === 'WATCHING' ? 'border-emerald-400/40' :
+                      detectionState === 'TRIGGERED' ? 'border-red-400/60' :
+                      'border-amber-400/30'
+                    }`}
                     style={{ top: '20%', left: '20%', width: '60%', height: '60%' }}
                   />
                 </div>
@@ -832,9 +955,17 @@ export default function ReplayCamera() {
                 {/* Motion level meter */}
                 <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2">
                   <Eye className="h-4 w-4 text-white/70" />
-                  <div className="flex-1 h-2 bg-white/20 rounded-full overflow-hidden">
+                  <div className="flex-1 h-2 bg-white/20 rounded-full overflow-hidden relative">
+                    {/* Threshold marker */}
                     <div
-                      className={`h-full rounded-full transition-all duration-150 ${currentMotionLevel > sensitivity ? 'bg-amber-400' : 'bg-emerald-400'}`}
+                      className="absolute top-0 bottom-0 w-0.5 bg-white/50 z-10"
+                      style={{ left: `${Math.min(sensitivity * 1000, 100)}%` }}
+                    />
+                    <div
+                      className={`h-full rounded-full transition-all duration-100 ${
+                        currentMotionLevel > sensitivity ? 'bg-red-400' :
+                        detectionState === 'WATCHING' ? 'bg-emerald-400' : 'bg-amber-400'
+                      }`}
                       style={{ width: `${Math.min(currentMotionLevel * 1000, 100)}%` }}
                     />
                   </div>
@@ -884,8 +1015,8 @@ export default function ReplayCamera() {
           <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50 mb-4">
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
-                {isListeningRef.current ? <Eye className="h-4 w-4 text-emerald-400" /> : <EyeOff className="h-4 w-4 text-slate-500" />}
-                Motion Sensitivity
+                {detectionState === 'WATCHING' ? <Eye className="h-4 w-4 text-emerald-400" /> : <EyeOff className="h-4 w-4 text-amber-400" />}
+                Trigger Sensitivity
               </label>
               <span className="text-xs text-slate-400">
                 {getSensitivityLabel()}
@@ -894,20 +1025,29 @@ export default function ReplayCamera() {
             </div>
             <input
               type="range"
-              min="0.01"
-              max="0.25"
+              min="0.005"
+              max="0.15"
               step="0.005"
               value={sensitivity}
               onChange={(e) => setSensitivity(parseFloat(e.target.value))}
               className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
             />
             <div className="flex justify-between text-xs text-slate-500 mt-1">
-              <span>More Sensitive (1%)</span>
-              <span>Less Sensitive (25%)</span>
+              <span>More Sensitive (0.5%)</span>
+              <span>Less Sensitive (15%)</span>
             </div>
             <p className="text-xs text-slate-500 mt-2">
-              Detects visual changes in center 60% of frame. Lower = more sensitive to small movements like arrows hitting the target.
+              Compares current frame to a stable baseline. Triggers only when scene was still and a sudden change appears (arrow impact). Camera shake is filtered out automatically.
             </p>
+            {/* Detection state info */}
+            <div className="flex items-center gap-3 mt-3 pt-3 border-t border-slate-700/50">
+              <div className={`w-2.5 h-2.5 rounded-full ${getDetectionStateColor()}`} />
+              <span className="text-xs text-slate-400">
+                {detectionState === 'STABILIZING' && 'Waiting for camera to stabilize (hold still ~1.5s)...'}
+                {detectionState === 'WATCHING' && 'Baseline set — watching for arrow impact'}
+                {detectionState === 'TRIGGERED' && 'Impact detected — recording clip...'}
+              </span>
+            </div>
           </div>
         )}
 
@@ -917,13 +1057,14 @@ export default function ReplayCamera() {
             <h3 className="text-white font-semibold mb-3">How it works</h3>
             <ol className="text-slate-400 text-sm space-y-2 list-decimal list-inside">
               <li>Tap &quot;Start Camera&quot; above to begin recording</li>
-              <li>Point camera at the target — motion in the center zone is monitored</li>
-              <li>When an arrow impact is visually detected, a 6-second clip is saved</li>
+              <li>Point camera at the target and hold still — the system will stabilize</li>
+              <li>Once stable (green &quot;Watching&quot;), any sudden change (arrow impact) triggers a clip</li>
+              <li>Camera shake is automatically filtered — only sudden impacts from stillness trigger</li>
               <li>Sign in and select tournament/archer to auto-upload clips</li>
               <li>Target number auto-advances after each successful save</li>
             </ol>
             <p className="text-slate-500 text-xs mt-3">
-              Tip: Keep the camera steady and aimed at the target face. The detection zone (center 60%) should cover the target. Use &quot;Capture Now&quot; as a manual backup.
+              Tip: Mount the camera on a tripod for best results. The system compares each frame to a stable baseline, so gradual changes (lighting, wind) won&apos;t trigger false positives. Use &quot;Capture Now&quot; as a manual backup.
             </p>
           </div>
         )}
