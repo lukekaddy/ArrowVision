@@ -257,11 +257,11 @@ export default function Index() {
                     to={user ? `/dashboard/${t.id}` : '/leaderboard'}
                     className="block"
                   >
-                    <div className="flex items-start justify-between mb-3">
-                      <h3 className="text-lg font-semibold text-white group-hover:text-emerald-400 transition-colors pr-8">
+                    <div className={`flex items-start justify-between mb-3 ${isUpcoming && user ? 'pr-10' : ''}`}>
+                      <h3 className="text-lg font-semibold text-white group-hover:text-emerald-400 transition-colors pr-2">
                         {t.name}
                       </h3>
-                      <span className={`text-xs font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5 ${getStatusStyle(status)}`}>
+                      <span className={`text-xs font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5 whitespace-nowrap ${getStatusStyle(status)}`}>
                         {status === 'active' && (
                           <span className="relative flex h-2 w-2">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -297,7 +297,7 @@ export default function Index() {
                   {isUpcoming && user && (
                     <Link
                       to={`/edit-tournament/${t.id}`}
-                      className="absolute top-4 right-14 h-8 w-8 flex items-center justify-center rounded-lg bg-slate-700/50 border border-slate-600/50 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/10 transition-all"
+                      className="absolute top-4 right-4 z-10 h-8 w-8 flex items-center justify-center rounded-lg bg-slate-700/80 border border-slate-600/50 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/10 transition-all"
                       title="Edit Tournament"
                       onClick={(e) => e.stopPropagation()}
                     >
