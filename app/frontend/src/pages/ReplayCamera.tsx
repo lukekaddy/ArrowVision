@@ -65,6 +65,15 @@ const GRID_CELL_THRESHOLD = 0.10; // 10% of pixels in a single cell must change 
 const SPIKE_LOW_THRESHOLD = 0.005; // Previous frame-to-frame motion must be below this (0.5%)
 const SPIKE_HIGH_THRESHOLD = 0.02; // Current frame-to-frame motion must exceed this (2%) for spike trigger
 
+// Per-pixel brightness threshold for baseline comparison (raised from 15 to reduce sensor noise on dark targets)
+const PIXEL_DIFF_THRESHOLD = 25;
+
+// Hot cell tracking: cells above threshold for this duration (ms) are considered "always hot" and ignored
+const HOT_CELL_DURATION_MS = 500;
+
+// Resting level calibration duration after entering WATCHING state (ms)
+const RESTING_CALIBRATION_MS = 1000;
+
 // Periodic logging interval (ms)
 const LOG_INTERVAL_MS = 1000;
 
@@ -78,6 +87,9 @@ export default function ReplayCamera() {
   const streamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  // The FIRST chunk from MediaRecorder contains the WebM initialization segment (EBML header + Segment info + Tracks).
+  // We MUST preserve it permanently and prepend it to every assembled clip for valid playback.
+  const headerChunkRef = useRef<Blob | null>(null);
   const motionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const triggerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -96,6 +108,18 @@ export default function ReplayCamera() {
   // Frame-to-frame spike detection refs
   const prevFrameToFrameMotionRef = useRef<number>(0);
   const lastLogTimeRef = useRef<number>(0);
+
+  // Hot cell tracking: Map<"col,row", timestamp_first_hot>
+  const hotCellsRef = useRef<Map<string, number>>(new Map());
+
+  // Resting level tracking
+  const restingCalibrationStartRef = useRef<number>(0);
+  const restingMaxCellRef = useRef<number>(0);
+  const restingGlobalMotionRef = useRef<number>(0);
+  const restingCalibratedRef = useRef<boolean>(false);
+  const restingFrameCountRef = useRef<number>(0);
+  const restingMaxCellAccumRef = useRef<number>(0);
+  const restingGlobalAccumRef = useRef<number>(0);
 
   // Debug view refs
   const debugCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -208,6 +232,14 @@ export default function ReplayCamera() {
     warmupCompleteRef.current = false;
     prevFrameToFrameMotionRef.current = 0;
     lastLogTimeRef.current = 0;
+    hotCellsRef.current.clear();
+    restingCalibratedRef.current = false;
+    restingMaxCellRef.current = 0;
+    restingGlobalMotionRef.current = 0;
+    restingCalibrationStartRef.current = 0;
+    restingFrameCountRef.current = 0;
+    restingMaxCellAccumRef.current = 0;
+    restingGlobalAccumRef.current = 0;
   };
 
   const requestWakeLock = async () => {
@@ -319,6 +351,8 @@ export default function ReplayCamera() {
     const mimeType = getSupportedMimeType();
 
     chunksRef.current = [];
+    // Reset header chunk for new recording session — the first ondataavailable will capture it
+    headerChunkRef.current = null;
     let recorder: MediaRecorder;
     try {
       const options: MediaRecorderOptions = { videoBitsPerSecond: 2500000 };
@@ -336,8 +370,20 @@ export default function ReplayCamera() {
 
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) {
+        // The FIRST chunk from MediaRecorder contains the WebM/MP4 initialization segment
+        // (EBML header + Segment info + Tracks). We store it permanently and never discard it.
+        if (!headerChunkRef.current) {
+          headerChunkRef.current = e.data;
+          console.log('[ReplayCamera] Header chunk captured and stored permanently:', {
+            size: e.data.size,
+            sizeKB: (e.data.size / 1024).toFixed(1) + ' KB',
+            type: e.data.type,
+          });
+          return; // Don't add header to the rotating buffer
+        }
+        // Subsequent chunks are data chunks — add to rotating ring buffer
         chunksRef.current.push(e.data);
-        // Keep only last 12 seconds worth of chunks
+        // Keep only last 12 data chunks (the header is stored separately)
         if (chunksRef.current.length > 12) {
           chunksRef.current = chunksRef.current.slice(-12);
         }
@@ -445,13 +491,15 @@ export default function ReplayCamera() {
     let maxCellPct = 0;
     const baseline = baselineFrameRef.current;
 
+    // Track which cells are above threshold this frame (for hot cell tracking)
+    const cellsAboveThreshold: Map<string, number> = new Map();
+
     if (baseline && baseline.length === totalPixels) {
       let globalDiffSum = 0;
 
       // Grid-based detection: divide zone into GRID_COLS x GRID_ROWS cells
       const cellW = Math.floor(zoneW / GRID_COLS);
       const cellH = Math.floor(zoneH / GRID_ROWS);
-      const pixelDiffThreshold = 15; // lowered from 30 for black target with subtle changes
 
       for (let row = 0; row < GRID_ROWS; row++) {
         for (let col = 0; col < GRID_COLS; col++) {
@@ -465,7 +513,7 @@ export default function ReplayCamera() {
               const idx = (cellStartY + cy) * zoneW + (cellStartX + cx);
               const diff = Math.abs(currentGrayscale[idx] - baseline[idx]);
               globalDiffSum += diff;
-              if (diff > pixelDiffThreshold) {
+              if (diff > PIXEL_DIFF_THRESHOLD) {
                 cellChangedPixels++;
               }
             }
@@ -474,11 +522,40 @@ export default function ReplayCamera() {
           const cellPct = cellChangedPixels / cellTotalPixels;
           if (cellPct > maxCellPct) maxCellPct = cellPct;
 
-          // If any single cell exceeds the cell threshold, we have a localized trigger
+          const cellKey = `${col},${row}`;
+
+          // Track cells above threshold for hot cell detection
           if (cellPct > GRID_CELL_THRESHOLD) {
-            if (!cellTriggered || cellPct > cellTriggered.pct) {
-              cellTriggered = { col, row, pct: cellPct };
-            }
+            cellsAboveThreshold.set(cellKey, cellPct);
+          }
+        }
+      }
+
+      // --- Hot cell tracking ---
+      // Update hot cell map: cells that have been continuously above threshold become "hot"
+      const hotCells = hotCellsRef.current;
+
+      // Remove cells from hot tracking that are no longer above threshold
+      for (const key of Array.from(hotCells.keys())) {
+        if (!cellsAboveThreshold.has(key)) {
+          hotCells.delete(key);
+        }
+      }
+
+      // Add/update cells that are above threshold and determine triggers
+      for (const [key, pct] of cellsAboveThreshold.entries()) {
+        if (!hotCells.has(key)) {
+          hotCells.set(key, now);
+        }
+        // Check if this cell is NOT yet "hot" (hasn't been above threshold long enough)
+        const firstHotTime = hotCells.get(key)!;
+        const isHotCell = (now - firstHotTime) > HOT_CELL_DURATION_MS;
+
+        // Only trigger on NEWLY hot cells (not persistently hot ones)
+        if (!isHotCell) {
+          if (!cellTriggered || pct > cellTriggered.pct) {
+            const [colStr, rowStr] = key.split(',');
+            cellTriggered = { col: parseInt(colStr), row: parseInt(rowStr), pct };
           }
         }
       }
@@ -508,9 +585,10 @@ export default function ReplayCamera() {
       }
 
       if (cellTriggered) {
+        const hotCount = Array.from(hotCells.entries()).filter(([, t]) => (now - t) > HOT_CELL_DURATION_MS).length;
         console.log(
-          `[ReplayCamera] Cell trigger: col=${cellTriggered.col}, row=${cellTriggered.row}, ` +
-          `${(cellTriggered.pct * 100).toFixed(1)}% changed (threshold: ${(GRID_CELL_THRESHOLD * 100).toFixed(0)}%)`
+          `[ReplayCamera] NEW cell trigger: col=${cellTriggered.col}, row=${cellTriggered.row}, ` +
+          `${(cellTriggered.pct * 100).toFixed(1)}% changed (hot cells ignored: ${hotCount})`
         );
       }
     }
@@ -537,11 +615,13 @@ export default function ReplayCamera() {
     if (now - lastLogTimeRef.current >= LOG_INTERVAL_MS) {
       lastLogTimeRef.current = now;
       const currentState = detectionStateRef.current;
+      const hotCellCount = Array.from(hotCellsRef.current.entries()).filter(([, t]) => (now - t) > HOT_CELL_DURATION_MS).length;
       console.log(
         `[ReplayCamera] [${currentState}] global: ${(baselineMotion * 100).toFixed(2)}% | ` +
         `maxCell: ${(maxCellPct * 100).toFixed(1)}% | f2f: ${(frameToFrameMotion * 100).toFixed(2)}% | ` +
         `prevF2F: ${(prevFrameToFrameMotionRef.current * 100).toFixed(2)}% | ` +
-        `rolling: ${(rollingAvg * 100).toFixed(2)}% | baseline age: ${Math.floor(baselineAgeRef.current / 1000)}s`
+        `rolling: ${(rollingAvg * 100).toFixed(2)}% | baseline age: ${Math.floor(baselineAgeRef.current / 1000)}s | ` +
+        `hotCells: ${hotCellCount} | resting: global=${(restingGlobalMotionRef.current * 100).toFixed(2)}% maxCell=${(restingMaxCellRef.current * 100).toFixed(1)}% calibrated=${restingCalibratedRef.current}`
       );
     }
 
@@ -563,7 +643,14 @@ export default function ReplayCamera() {
           stableStartTimeRef.current = null;
           setTriggeredCell(null);
           prevFrameToFrameMotionRef.current = 0;
-          console.log('[ReplayCamera] State: STABILIZING → WATCHING (baseline set)');
+          // Reset resting calibration for new WATCHING period
+          restingCalibratedRef.current = false;
+          restingCalibrationStartRef.current = 0;
+          restingFrameCountRef.current = 0;
+          restingMaxCellAccumRef.current = 0;
+          restingGlobalAccumRef.current = 0;
+          hotCellsRef.current.clear();
+          console.log('[ReplayCamera] State: STABILIZING → WATCHING (baseline set, calibrating resting levels...)');
         }
       } else {
         // Reset stable timer if motion detected
@@ -576,7 +663,45 @@ export default function ReplayCamera() {
         setDetectionState('STABILIZING');
         stableStartTimeRef.current = null;
         setTriggeredCell(null);
+        // Reset resting calibration on shake
+        restingCalibratedRef.current = false;
+        restingCalibrationStartRef.current = 0;
+        restingFrameCountRef.current = 0;
+        restingMaxCellAccumRef.current = 0;
+        restingGlobalAccumRef.current = 0;
+        hotCellsRef.current.clear();
         console.log('[ReplayCamera] State: WATCHING → STABILIZING (shake detected)');
+        prevFrameToFrameMotionRef.current = frameToFrameMotion;
+        prevFrameDataRef.current = currentGrayscale;
+        return;
+      }
+
+      // --- Resting level calibration ---
+      // For the first RESTING_CALIBRATION_MS after entering WATCHING, record average levels
+      if (!restingCalibratedRef.current) {
+        if (restingCalibrationStartRef.current === 0) {
+          restingCalibrationStartRef.current = now;
+          restingFrameCountRef.current = 0;
+          restingMaxCellAccumRef.current = 0;
+          restingGlobalAccumRef.current = 0;
+        }
+
+        restingFrameCountRef.current++;
+        restingMaxCellAccumRef.current += maxCellPct;
+        restingGlobalAccumRef.current += baselineMotion;
+
+        if (now - restingCalibrationStartRef.current >= RESTING_CALIBRATION_MS) {
+          const frameCount = restingFrameCountRef.current;
+          restingMaxCellRef.current = restingMaxCellAccumRef.current / frameCount;
+          restingGlobalMotionRef.current = restingGlobalAccumRef.current / frameCount;
+          restingCalibratedRef.current = true;
+          console.log(
+            `[ReplayCamera] Resting levels calibrated: global=${(restingGlobalMotionRef.current * 100).toFixed(2)}%, ` +
+            `maxCell=${(restingMaxCellRef.current * 100).toFixed(1)}% (over ${frameCount} frames)`
+          );
+        }
+
+        // Don't trigger during calibration period
         prevFrameToFrameMotionRef.current = frameToFrameMotion;
         prevFrameDataRef.current = currentGrayscale;
         return;
@@ -588,32 +713,32 @@ export default function ReplayCamera() {
         baselineFrameRef.current = new Uint8Array(currentGrayscale);
         baselineAgeRef.current = 0;
         setBaselineAge(0);
+        // Re-calibrate resting levels on baseline refresh
+        restingCalibratedRef.current = false;
+        restingCalibrationStartRef.current = 0;
+        hotCellsRef.current.clear();
       }
 
-      // Check for impact using TRIPLE trigger strategy:
-      // 1. Global: baseline motion exceeds sensitivity threshold (catches large changes)
-      // 2. Grid cell: ANY single cell has >10% changed pixels (catches thin objects like arrows)
-      // 3. Frame-to-frame spike: sudden jump from <0.5% to >2% (catches target vibration on impact)
+      // Check for impact — PRIMARY trigger is frame-to-frame spike, SECONDARY is new cell trigger
       if (
         isListeningRef.current &&
         !isRecordingClipRef.current &&
         rollingAvg < SHAKE_THRESHOLD
       ) {
-        const globalTrigger = baselineMotion > sensitivityRef.current;
-        const cellTrigger = cellTriggered !== null;
-
-        // NEW: Frame-to-frame spike detection
-        // If previous f2f was very low (still scene) and current f2f suddenly jumps high → impact vibration
+        // PRIMARY TRIGGER: Frame-to-frame spike detection
+        // The most reliable signal: scene was still (rolling avg low), then sudden motion jump
         const spikeTrigger = (
           prevFrameToFrameMotionRef.current < SPIKE_LOW_THRESHOLD &&
-          frameToFrameMotion > SPIKE_HIGH_THRESHOLD
+          frameToFrameMotion > SPIKE_HIGH_THRESHOLD &&
+          rollingAvg < sensitivityRef.current * 0.5
         );
 
         if (spikeTrigger) {
           console.log(
-            `[ReplayCamera] TRIGGER via frame-to-frame SPIKE: ` +
+            `[ReplayCamera] TRIGGER via frame-to-frame SPIKE (PRIMARY): ` +
             `prev=${(prevFrameToFrameMotionRef.current * 100).toFixed(2)}% → ` +
-            `curr=${(frameToFrameMotion * 100).toFixed(2)}% (threshold: ${(SPIKE_HIGH_THRESHOLD * 100).toFixed(1)}%)`
+            `curr=${(frameToFrameMotion * 100).toFixed(2)}% (threshold: ${(SPIKE_HIGH_THRESHOLD * 100).toFixed(1)}%) | ` +
+            `rolling=${(rollingAvg * 100).toFixed(2)}%`
           );
           triggerImpact();
           prevFrameToFrameMotionRef.current = frameToFrameMotion;
@@ -621,24 +746,25 @@ export default function ReplayCamera() {
           return;
         }
 
-        if (globalTrigger || cellTrigger) {
-          // Additional check: the frame-to-frame motion for THIS frame should be notable
-          // (distinguishes "arrow appeared" from gradual drift)
-          // Use a very low threshold for cell triggers since arrows are thin
-          const f2fThreshold = cellTrigger
-            ? sensitivityRef.current * 0.1  // Very low for cell-based (arrow) triggers
-            : sensitivityRef.current * 0.3; // Normal for global triggers
+        // SECONDARY TRIGGER: Newly-hot cell trigger (ignores persistently hot cells)
+        // Only fires if the cell is NEW (not in hot cells map for > HOT_CELL_DURATION_MS)
+        // AND there's a concurrent frame-to-frame motion increase
+        // AND the global/cell motion exceeds resting level + sensitivity
+        const cellTrigger = cellTriggered !== null;
+        const globalExceedsResting = baselineMotion > (restingGlobalMotionRef.current + sensitivityRef.current);
+        const cellExceedsResting = cellTriggered ? cellTriggered.pct > (restingMaxCellRef.current + sensitivityRef.current) : false;
 
+        if (cellTrigger && (cellExceedsResting || globalExceedsResting)) {
+          // Require frame-to-frame motion to confirm something actually moved
+          const f2fThreshold = sensitivityRef.current * 0.3;
           if (frameToFrameMotion > f2fThreshold) {
-            if (cellTrigger && cellTriggered) {
+            if (cellTriggered) {
               setTriggeredCell(cellTriggered);
               console.log(
-                `[ReplayCamera] TRIGGER via grid cell [${cellTriggered.col},${cellTriggered.row}] ` +
-                `at ${(cellTriggered.pct * 100).toFixed(1)}% | global: ${(baselineMotion * 100).toFixed(2)}%`
-              );
-            } else {
-              console.log(
-                `[ReplayCamera] TRIGGER via global threshold: ${(baselineMotion * 100).toFixed(2)}% > ${(sensitivityRef.current * 100).toFixed(2)}%`
+                `[ReplayCamera] TRIGGER via NEW cell [${cellTriggered.col},${cellTriggered.row}] (SECONDARY): ` +
+                `${(cellTriggered.pct * 100).toFixed(1)}% (resting: ${(restingMaxCellRef.current * 100).toFixed(1)}%) | ` +
+                `global: ${(baselineMotion * 100).toFixed(2)}% (resting: ${(restingGlobalMotionRef.current * 100).toFixed(2)}%) | ` +
+                `f2f: ${(frameToFrameMotion * 100).toFixed(2)}%`
               );
             }
             triggerImpact();
@@ -646,6 +772,19 @@ export default function ReplayCamera() {
             prevFrameDataRef.current = currentGrayscale;
             return;
           }
+        }
+
+        // TERTIARY TRIGGER: Global motion exceeds resting + sensitivity (large change)
+        if (globalExceedsResting && frameToFrameMotion > sensitivityRef.current * 0.5) {
+          console.log(
+            `[ReplayCamera] TRIGGER via global delta (TERTIARY): ` +
+            `${(baselineMotion * 100).toFixed(2)}% > resting(${(restingGlobalMotionRef.current * 100).toFixed(2)}%) + sensitivity(${(sensitivityRef.current * 100).toFixed(2)}%) | ` +
+            `f2f: ${(frameToFrameMotion * 100).toFixed(2)}%`
+          );
+          triggerImpact();
+          prevFrameToFrameMotionRef.current = frameToFrameMotion;
+          prevFrameDataRef.current = currentGrayscale;
+          return;
         }
       }
     }
@@ -713,17 +852,28 @@ export default function ReplayCamera() {
     });
 
     const totalChunks = chunksRef.current.length;
-    // Use last 7 chunks (~7s of video: 3s pre + 4s post)
-    const clipChunks = chunksRef.current.slice(-7);
+    // Use last 7 data chunks (~7s of video: 3s pre + 4s post)
+    const clipDataChunks = chunksRef.current.slice(-7);
+    const headerChunk = headerChunkRef.current;
 
     console.log('[ReplayCamera] Clip generation:', {
-      totalChunksInBuffer: totalChunks,
-      chunksUsedForClip: clipChunks.length,
-      chunkSizes: clipChunks.map(c => c.size),
+      totalDataChunksInBuffer: totalChunks,
+      dataChunksUsedForClip: clipDataChunks.length,
+      headerChunkPresent: !!headerChunk,
+      headerChunkSize: headerChunk ? headerChunk.size : 0,
+      dataChunkSizes: clipDataChunks.map(c => c.size),
     });
 
-    if (clipChunks.length === 0) {
-      console.error('[ReplayCamera] No video data captured — zero chunks available');
+    if (!headerChunk) {
+      console.error('[ReplayCamera] No header chunk available — cannot assemble valid video file');
+      setStatusMessage('Recording header missing. Restarting...');
+      setRecordingStatus('error');
+      setTimeout(() => resetAfterClip(), 3000);
+      return;
+    }
+
+    if (clipDataChunks.length === 0) {
+      console.error('[ReplayCamera] No data chunks captured — zero data chunks available');
       setStatusMessage('No video data captured. Try again.');
       setRecordingStatus('error');
       setTimeout(() => resetAfterClip(), 3000);
@@ -731,13 +881,17 @@ export default function ReplayCamera() {
     }
 
     const mimeType = getSupportedMimeType() || 'video/mp4';
-    const clipBlob = new Blob(clipChunks, { type: mimeType });
+    // CRITICAL: Always prepend the header chunk (initialization segment) before data chunks.
+    // Without the header, the resulting blob is not a valid WebM/MP4 file and cannot be demuxed.
+    const clipBlob = new Blob([headerChunk, ...clipDataChunks], { type: mimeType });
 
-    console.log('[ReplayCamera] Clip blob assembled:', {
+    console.log('[ReplayCamera] Clip blob assembled (header + data):', {
       blobSize: clipBlob.size,
       blobSizeKB: (clipBlob.size / 1024).toFixed(1) + ' KB',
       mimeType: clipBlob.type,
-      numChunks: clipChunks.length,
+      headerIncluded: true,
+      headerSize: headerChunk.size,
+      numDataChunks: clipDataChunks.length,
     });
 
     if (clipBlob.size < MIN_CLIP_SIZE_BYTES) {
@@ -891,6 +1045,13 @@ export default function ReplayCamera() {
     baselineAgeRef.current = 0;
     setBaselineAge(0);
     setTriggeredCell(null);
+    // Reset resting calibration and hot cells
+    restingCalibratedRef.current = false;
+    restingCalibrationStartRef.current = 0;
+    restingFrameCountRef.current = 0;
+    restingMaxCellAccumRef.current = 0;
+    restingGlobalAccumRef.current = 0;
+    hotCellsRef.current.clear();
 
     // Restart recording if stream is still active
     if (streamRef.current && streamRef.current.active) {
@@ -1384,7 +1545,7 @@ export default function ReplayCamera() {
             </div>
 
             <p className="text-xs text-slate-500">
-              <strong>Triple detection:</strong> Triggers on global motion, localized cell change ({GRID_COLS}×{GRID_ROWS} grid, {Math.round(GRID_CELL_THRESHOLD * 100)}% threshold), OR frame-to-frame spike (sudden motion jump from stillness). Pixel threshold: {15} brightness units. Optimized for close-range (2ft) black target with white center.
+              <strong>Smart detection:</strong> PRIMARY: frame-to-frame spike (sudden motion from stillness). SECONDARY: new cell change ({GRID_COLS}×{GRID_ROWS} grid, ignores persistently hot cells). TERTIARY: global delta above resting level. Pixel threshold: {PIXEL_DIFF_THRESHOLD} brightness units. Resting-level calibration eliminates false triggers from sensor noise.
             </p>
             {/* Detection state info */}
             <div className="flex items-center gap-3 mt-3 pt-3 border-t border-slate-700/50">
@@ -1392,7 +1553,7 @@ export default function ReplayCamera() {
               <span className="text-xs text-slate-400">
                 {detectionState === 'WARMUP' && `Camera warming up (${warmupCountdown}s) — auto-exposure settling...`}
                 {detectionState === 'STABILIZING' && 'Waiting for camera to stabilize (hold still ~3s)...'}
-                {detectionState === 'WATCHING' && 'Baseline set — watching for arrow impact (grid + global)'}
+                {detectionState === 'WATCHING' && 'Baseline set — watching for arrow impact (spike + delta detection)'}
                 {detectionState === 'TRIGGERED' && 'Impact detected — recording clip...'}
               </span>
             </div>
@@ -1408,8 +1569,8 @@ export default function ReplayCamera() {
               <li>Camera warms up for 5 seconds (auto-exposure/focus settling)</li>
               <li>Point camera at the target and hold still — the system will stabilize (~3s)</li>
               <li>Once stable (green &quot;Watching&quot;), any sudden change (arrow impact) triggers a clip</li>
-              <li>Triple detection: grid cells ({GRID_COLS}×{GRID_ROWS}), global motion, AND frame-to-frame spike</li>
-              <li>Optimized for close range (2ft tripod) — black target with white center</li>
+              <li>Smart detection: frame-to-frame spike (primary), new cell change, global delta</li>
+              <li>Resting-level calibration eliminates false triggers from sensor noise on dark targets</li>
               <li>Enable &quot;Debug View&quot; to see what the camera detects (green = change from baseline)</li>
               <li>Camera shake is automatically filtered — only sudden impacts from stillness trigger</li>
               <li>Sign in and select tournament/archer to auto-upload clips</li>

@@ -1,0 +1,147 @@
+Failed to load resource: the server responded with a status of 403 ()
+
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 34.1% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 33.6% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 33.4% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 32.3% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 33.9% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] [TRIGGERED] global: 2.30% | maxCell: 33.9% | f2f: 0.52% | prevF2F: 0.55% | rolling: 0.53% | baseline age: 5s
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 32.7% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 33.2% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 33.2% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 32.5% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 32.5% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 33.2% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 32.0% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 33.2% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 33.4% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 32.7% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 33.0% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 32.7% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 32.5% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 32.0% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 32.3% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 33.6% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 32.7% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 32.0% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Post-trigger period complete. Generating clip...
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 32.0% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 32.7% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] [TRIGGERED] global: 2.28% | maxCell: 32.7% | f2f: 0.52% | prevF2F: 0.50% | rolling: 0.53% | baseline age: 6s
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 33.0% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 32.5% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Clip generation: 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Clip blob assembled: 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Starting upload: 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Step 1: Getting upload URL via custom endpoint...
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 32.5% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 31.4% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 31.8% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 32.5% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 33.2% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 32.5% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 32.5% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 32.7% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 31.6% changed (threshold: 10%)
+appPlugins-atoms-pro…1774333923027.js:32 message 
+Object
+appPlugins-atoms-pro…1774333923027.js:32 [ReplayCamera] Cell trigger: col=2, row=1, 33.0% changed (threshold: 10%)
+﻿
+
+Agentic extensions debugging
+You can now debug extensions through a coding agent using new tools in DevTools for agents, available through the MCP server.
+
+Sort network requests
+The Network panel introduces a new Request # column, allowing you to sort requests by their absolute chronological order of occurrence, independent of priority or duration.
+
+Accessibility tree
+To streamline the Elements panel, the Accessibility tree toggle has moved from the DOM tree to the Accessibility tab within the panel.

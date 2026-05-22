@@ -1,0 +1,51 @@
+index-CUbXpwJH.js:11 [SmartScore] Video playback error details: 
+{code: 4, message: 'PipelineStatus::DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed', MEDIA_ERR_ABORTED: false, MEDIA_ERR_NETWORK: false, MEDIA_ERR_DECODE: false, …}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 14: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 message 
+{type: 'mgx-appview-console', data: {…}, targetName: ''}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 15: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 message 
+{type: 'mgx-appview-console', data: {…}, targetName: ''}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 16: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 message 
+{type: 'mgx-appview-console', data: {…}, targetName: ''}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 17: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 message 
+{type: 'mgx-appview-console', data: {…}, targetName: ''}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 18: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 message 
+{type: 'mgx-appview-console', data: {…}, targetName: ''}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 19: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 message 
+{type: 'mgx-appview-console', data: {…}, targetName: ''}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 20: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 message 
+{type: 'mgx-appview-console', data: {…}, targetName: ''}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 21: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 message 
+{type: 'mgx-appview-console', data: {…}, targetName: ''}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 22: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 message 
+{type: 'mgx-appview-console', data: {…}, targetName: ''}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 23: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 message 
+{type: 'mgx-appview-console', data: {…}, targetName: ''}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 24: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 message 
+{type: 'mgx-appview-console', data: {…}, targetName: ''}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 25: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 message 
+{type: 'mgx-appview-console', data: {…}, targetName: ''}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 26: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 message 
+{type: 'mgx-appview-console', data: {…}, targetName: ''}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 27: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 message 
+{type: 'mgx-appview-console', data: {…}, targetName: ''}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Replay check target 28: {"object_key":null}
+appPlugins-atoms-pro…1774333923027.js:32 [Scorecard] Final replay map: 
+{1: 'replays/6/6/course1_target1_1779412764078.webm'}
+appPlugins-atoms-pro…1774333923027.js:32 message 
+{type: 'mgx-appview-console', data: {…}, targetName: ''}
+appPlugins-atoms-pro…1774333923027.js:32 message 
+{type: 'mgx-appview-console', data: {…}, targetName: ''}

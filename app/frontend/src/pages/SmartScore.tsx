@@ -47,6 +47,8 @@ export default function SmartScore() {
   const [replayVideoUrl, setReplayVideoUrl] = useState<string | null>(null);
   const [loadingReplay, setLoadingReplay] = useState(false);
   const [videoPlaybackError, setVideoPlaybackError] = useState(false);
+  const [playbackRetryCount, setPlaybackRetryCount] = useState(0);
+  const MAX_PLAYBACK_RETRIES = 2;
 
   const hasContext = tournamentId && archerId && targetNumber;
 
@@ -82,6 +84,7 @@ export default function SmartScore() {
     setVideoPlaybackError(false);
     setIsPlaying(false);
     setLoadingReplay(false);
+    setPlaybackRetryCount(0);
 
     if (!tournamentId || !archerId || !courseNumber || !targetNumber) return;
 
@@ -362,9 +365,18 @@ export default function SmartScore() {
                       currentSrc: videoEl.currentSrc,
                       networkState: videoEl.networkState,
                       readyState: videoEl.readyState,
+                      retryCount: playbackRetryCount,
                     });
                     setIsPlaying(false);
-                    setVideoPlaybackError(true);
+                    // Auto-retry with cache-busted URL up to MAX_PLAYBACK_RETRIES times
+                    if (playbackRetryCount < MAX_PLAYBACK_RETRIES) {
+                      console.log(`[SmartScore] Retrying playback (attempt ${playbackRetryCount + 1}/${MAX_PLAYBACK_RETRIES})...`);
+                      setPlaybackRetryCount(prev => prev + 1);
+                      // Force re-fetch with new cache-buster
+                      setFetchCounter(prev => prev + 1);
+                    } else {
+                      setVideoPlaybackError(true);
+                    }
                   }}
                 />
                 {/* Play/Pause Overlay */}
@@ -391,8 +403,27 @@ export default function SmartScore() {
           ) : (
             <div className="flex flex-col items-center justify-center h-48 bg-slate-800/50 rounded-2xl border-2 border-slate-700/50">
               <VideoOff className="h-10 w-10 text-slate-500 mb-3" />
-              <p className="text-slate-400 text-sm font-medium">No replay available for this target</p>
-              <p className="text-slate-500 text-xs mt-1">Record a replay using the Replay Camera</p>
+              {videoPlaybackError ? (
+                <>
+                  <p className="text-amber-400 text-sm font-medium">Replay could not be played</p>
+                  <p className="text-slate-500 text-xs mt-1">The video format may not be supported by this browser</p>
+                  <button
+                    onClick={() => {
+                      setVideoPlaybackError(false);
+                      setPlaybackRetryCount(0);
+                      setFetchCounter(prev => prev + 1);
+                    }}
+                    className="mt-3 px-4 py-1.5 text-xs bg-emerald-500/20 text-emerald-400 rounded-lg hover:bg-emerald-500/30 transition-colors"
+                  >
+                    Try Again
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-slate-400 text-sm font-medium">No replay available for this target</p>
+                  <p className="text-slate-500 text-xs mt-1">Record a replay using the Replay Camera</p>
+                </>
+              )}
             </div>
           )}
         </div>
