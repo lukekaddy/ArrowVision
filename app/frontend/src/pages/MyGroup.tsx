@@ -94,7 +94,15 @@ export default function MyGroup() {
               },
             });
 
-            const groups: Group[] = groupRes?.data?.items || groupRes?.data || [];
+            const rawGroups = groupRes?.data?.items || groupRes?.data || [];
+
+            // Response structure is [{group: {...}, members: [...]}, ...]
+            // We need to flatten it so group metadata is at top level
+            const groups: Group[] = rawGroups.map((item: { group?: Record<string, unknown>; members?: GroupMember[] }) => ({
+              ...(item.group || {}),
+              members: item.members || [],
+              tournament_id: tournamentId,
+            })) as Group[];
 
             // Find the group that contains the current user
             const userGroup = groups.find((g) =>
@@ -127,7 +135,7 @@ export default function MyGroup() {
   }, [token, user?.id]);
 
   const fetchShootingOrder = async () => {
-    if (!group || !token) return;
+    if (!group || !group.id || !token) return;
     setLoadingOrder(true);
     try {
       const res = await client.apiCall.invoke({
@@ -138,8 +146,15 @@ export default function MyGroup() {
           headers: { Authorization: `Bearer ${token}` },
         },
       });
-      const order = res?.data?.items || res?.data || [];
-      setShootingOrder(order);
+      const data = res?.data?.items || res?.data || {};
+      // Response structure: {shooting_order_mode, target_number, order: [{position, archer_id, ...}]}
+      const orderList = Array.isArray(data) ? data : (data.order || []);
+      setShootingOrder(orderList.map((entry: { position?: number; order?: number; archer_id: number; first_name: string; last_name: string; archer_name?: string }) => ({
+        archer_id: entry.archer_id,
+        first_name: entry.first_name || entry.archer_name || '',
+        last_name: entry.last_name || '',
+        order: entry.position ?? entry.order ?? 0,
+      })));
     } catch {
       setShootingOrder([]);
     } finally {
