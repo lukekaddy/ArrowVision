@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Video, AlertCircle, CheckCircle, Loader2, Eye, EyeOff, Crosshair } from 'lucide-react';
+import { Video, AlertCircle, CheckCircle, Loader2, Eye, EyeOff, Crosshair, Camera } from 'lucide-react';
 import { toast } from '@/components/ui/sonner';
 
 interface Tournament {
@@ -30,12 +30,10 @@ type CameraStatus = 'idle' | 'requesting' | 'active' | 'error';
 type RecordingStatus = 'idle' | 'listening' | 'triggered' | 'uploading' | 'success' | 'error';
 
 // Detection state machine
-type DetectionState = 'STABILIZING' | 'WATCHING' | 'TRIGGERED';
+type DetectionState = 'WARMUP' | 'STABILIZING' | 'WATCHING' | 'TRIGGERED';
 
 // Minimum clip size in bytes (50KB) - anything smaller is likely corrupted/empty
 const MIN_CLIP_SIZE_BYTES = 50 * 1024;
-// Cooldown duration in ms after a trigger before new triggers are accepted
-const TRIGGER_COOLDOWN_MS = 8000;
 // Post-trigger recording duration in ms
 const POST_TRIGGER_DURATION_MS = 3000;
 // Motion detection interval in ms (faster for arrow detection)
@@ -45,12 +43,18 @@ const ANALYSIS_WIDTH = 120;
 const ANALYSIS_HEIGHT = 90;
 // Rolling average window size (number of frames to track)
 const ROLLING_WINDOW_SIZE = 20;
-// Time scene must be stable before entering WATCHING state (ms)
-const STABILIZE_DURATION_MS = 1500;
-// Shake threshold - rolling average above this means camera is shaking
-const SHAKE_THRESHOLD = 0.01; // 1%
-// Default trigger sensitivity (baseline comparison threshold)
-const DEFAULT_SENSITIVITY = 0.03; // 3%
+// Time scene must be stable before entering WATCHING state (ms) — increased for outdoor use
+const STABILIZE_DURATION_MS = 3000;
+// Shake threshold - rolling average above this means camera is shaking (2% for outdoor light variation)
+const SHAKE_THRESHOLD = 0.02;
+// Default trigger sensitivity (baseline comparison threshold) — 5% for outdoor conditions
+const DEFAULT_SENSITIVITY = 0.05;
+// Camera warmup duration in ms (let auto-exposure/focus settle)
+const WARMUP_DURATION_MS = 5000;
+// Baseline refresh interval when stable (ms) — refresh every 3s to handle gradual light changes
+const BASELINE_REFRESH_INTERVAL_MS = 3000;
+// Default detection zone size (percentage of frame center to analyze)
+const DEFAULT_ZONE_SIZE = 0.5; // 50%
 
 export default function ReplayCamera() {
   const { user, token } = useAuth();
@@ -70,12 +74,16 @@ export default function ReplayCamera() {
   const isRecordingClipRef = useRef<boolean>(false);
 
   // Detection state machine refs
-  const detectionStateRef = useRef<DetectionState>('STABILIZING');
+  const detectionStateRef = useRef<DetectionState>('WARMUP');
   const baselineFrameRef = useRef<Uint8Array | null>(null);
   const prevFrameDataRef = useRef<Uint8Array | null>(null);
   const rollingMotionRef = useRef<number[]>([]);
   const stableStartTimeRef = useRef<number | null>(null);
   const baselineAgeRef = useRef<number>(0); // ms since baseline was set
+
+  // Warmup refs
+  const warmupCompleteRef = useRef<boolean>(false);
+  const warmupStartTimeRef = useRef<number>(0);
 
   // Refs to hold current values for async closures
   const targetNumberRef = useRef<number>(1);
@@ -89,9 +97,11 @@ export default function ReplayCamera() {
   const [recordingStatus, setRecordingStatus] = useState<RecordingStatus>('idle');
   const [statusMessage, setStatusMessage] = useState('');
   const [sensitivity, setSensitivity] = useState(DEFAULT_SENSITIVITY);
+  const [zoneSize, setZoneSize] = useState(DEFAULT_ZONE_SIZE);
   const [currentMotionLevel, setCurrentMotionLevel] = useState(0);
-  const [detectionState, setDetectionState] = useState<DetectionState>('STABILIZING');
+  const [detectionState, setDetectionState] = useState<DetectionState>('WARMUP');
   const [baselineAge, setBaselineAge] = useState(0);
+  const [warmupCountdown, setWarmupCountdown] = useState(0);
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
   const [coursesConfig, setCoursesConfig] = useState<CourseConfig[]>([]);
@@ -108,9 +118,11 @@ export default function ReplayCamera() {
   useEffect(() => { selectedCourseRef.current = selectedCourse; }, [selectedCourse]);
   useEffect(() => { tokenRef.current = token ?? null; }, [token]);
 
-  // Use a ref for sensitivity so the motion detection loop always reads the latest value
+  // Use refs for sensitivity and zone size so the motion detection loop always reads the latest value
   const sensitivityRef = useRef(sensitivity);
   useEffect(() => { sensitivityRef.current = sensitivity; }, [sensitivity]);
+  const zoneSizeRef = useRef(zoneSize);
+  useEffect(() => { zoneSizeRef.current = zoneSize; }, [zoneSize]);
 
   // Fetch tournaments on mount
   useEffect(() => {
@@ -133,6 +145,7 @@ export default function ReplayCamera() {
   }, []);
 
   const dataPollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const warmupIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopEverything = () => {
     if (motionIntervalRef.current) {
@@ -142,6 +155,10 @@ export default function ReplayCamera() {
     if (dataPollingRef.current) {
       clearInterval(dataPollingRef.current);
       dataPollingRef.current = null;
+    }
+    if (warmupIntervalRef.current) {
+      clearInterval(warmupIntervalRef.current);
+      warmupIntervalRef.current = null;
     }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
@@ -162,9 +179,10 @@ export default function ReplayCamera() {
     baselineFrameRef.current = null;
     rollingMotionRef.current = [];
     stableStartTimeRef.current = null;
-    detectionStateRef.current = 'STABILIZING';
+    detectionStateRef.current = 'WARMUP';
     isListeningRef.current = false;
     isRecordingClipRef.current = false;
+    warmupCompleteRef.current = false;
   };
 
   const requestWakeLock = async () => {
@@ -201,14 +219,21 @@ export default function ReplayCamera() {
     setCameraStatus('requesting');
     try {
       let stream: MediaStream;
+      // Request high frame rate for better replay quality (120fps ideal, min 30fps)
+      const videoConstraints = {
+        facingMode: { ideal: 'environment' },
+        frameRate: { ideal: 120, min: 30 },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      };
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { exact: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { ...videoConstraints, facingMode: { exact: 'environment' } },
           audio: true,
         });
       } catch {
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: videoConstraints,
           audio: true,
         });
       }
@@ -228,13 +253,41 @@ export default function ReplayCamera() {
 
       await requestWakeLock();
       startRecording(stream);
-      // Wait for video to have dimensions before starting motion detection
-      setTimeout(() => startMotionDetection(), 500);
+      // Start warmup countdown — do NOT start motion detection yet
+      startWarmup();
     } catch (err) {
       console.error('Camera error:', err);
       setCameraStatus('error');
       setStatusMessage('Camera access denied. Please allow permissions and try again.');
     }
+  };
+
+  const startWarmup = () => {
+    warmupCompleteRef.current = false;
+    warmupStartTimeRef.current = Date.now();
+    detectionStateRef.current = 'WARMUP';
+    setDetectionState('WARMUP');
+    setWarmupCountdown(Math.ceil(WARMUP_DURATION_MS / 1000));
+
+    // Update countdown every second
+    warmupIntervalRef.current = setInterval(() => {
+      const elapsed = Date.now() - warmupStartTimeRef.current;
+      const remaining = Math.max(0, Math.ceil((WARMUP_DURATION_MS - elapsed) / 1000));
+      setWarmupCountdown(remaining);
+
+      if (elapsed >= WARMUP_DURATION_MS) {
+        // Warmup complete — start motion detection
+        if (warmupIntervalRef.current) {
+          clearInterval(warmupIntervalRef.current);
+          warmupIntervalRef.current = null;
+        }
+        warmupCompleteRef.current = true;
+        detectionStateRef.current = 'STABILIZING';
+        setDetectionState('STABILIZING');
+        console.log('[ReplayCamera] Warmup complete — starting motion detection');
+        startMotionDetection();
+      }
+    }, 200);
   };
 
   const startRecording = (stream: MediaStream) => {
@@ -281,9 +334,11 @@ export default function ReplayCamera() {
     setRecordingStatus('listening');
     isListeningRef.current = true;
 
-    // Reset detection state
-    detectionStateRef.current = 'STABILIZING';
-    setDetectionState('STABILIZING');
+    // Reset detection state (but keep warmup if still warming up)
+    if (warmupCompleteRef.current) {
+      detectionStateRef.current = 'STABILIZING';
+      setDetectionState('STABILIZING');
+    }
     baselineFrameRef.current = null;
     prevFrameDataRef.current = null;
     rollingMotionRef.current = [];
@@ -307,6 +362,9 @@ export default function ReplayCamera() {
   }, []);
 
   const detectMotion = () => {
+    // Don't analyze during warmup
+    if (!warmupCompleteRef.current) return;
+
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas || video.readyState < 2) return;
@@ -320,11 +378,13 @@ export default function ReplayCamera() {
     // Draw current video frame to canvas
     ctx.drawImage(video, 0, 0, ANALYSIS_WIDTH, ANALYSIS_HEIGHT);
 
-    // Detection zone: center 60% of the frame
-    const zoneX = Math.floor(ANALYSIS_WIDTH * 0.2);
-    const zoneY = Math.floor(ANALYSIS_HEIGHT * 0.2);
-    const zoneW = Math.floor(ANALYSIS_WIDTH * 0.6);
-    const zoneH = Math.floor(ANALYSIS_HEIGHT * 0.6);
+    // Detection zone: center portion based on zoneSize setting
+    const currentZoneSize = zoneSizeRef.current;
+    const margin = (1 - currentZoneSize) / 2;
+    const zoneX = Math.floor(ANALYSIS_WIDTH * margin);
+    const zoneY = Math.floor(ANALYSIS_HEIGHT * margin);
+    const zoneW = Math.floor(ANALYSIS_WIDTH * currentZoneSize);
+    const zoneH = Math.floor(ANALYSIS_HEIGHT * currentZoneSize);
 
     const imageData = ctx.getImageData(zoneX, zoneY, zoneW, zoneH);
     const pixels = imageData.data;
@@ -423,9 +483,9 @@ export default function ReplayCamera() {
         return;
       }
 
-      // Continuously update baseline if scene remains very stable (rolling avg < 0.5%)
-      // This keeps baseline fresh so gradual lighting changes don't cause false triggers
-      if (rollingAvg < SHAKE_THRESHOLD * 0.5 && baselineAgeRef.current > 3000) {
+      // Continuously update baseline if scene remains very stable
+      // Refresh every BASELINE_REFRESH_INTERVAL_MS to handle gradual outdoor light changes
+      if (rollingAvg < SHAKE_THRESHOLD * 0.5 && baselineAgeRef.current > BASELINE_REFRESH_INTERVAL_MS) {
         baselineFrameRef.current = new Uint8Array(currentGrayscale);
         baselineAgeRef.current = 0;
         setBaselineAge(0);
@@ -727,6 +787,7 @@ export default function ReplayCamera() {
     switch (detectionState) {
       case 'WATCHING': return 'bg-emerald-500';
       case 'STABILIZING': return 'bg-amber-500';
+      case 'WARMUP': return 'bg-blue-500';
       case 'TRIGGERED': return 'bg-red-500';
       default: return 'bg-slate-500';
     }
@@ -736,6 +797,7 @@ export default function ReplayCamera() {
     switch (detectionState) {
       case 'WATCHING': return 'Watching';
       case 'STABILIZING': return 'Stabilizing...';
+      case 'WARMUP': return `Warming up... (${warmupCountdown}s)`;
       case 'TRIGGERED': return 'Recording!';
       default: return 'Idle';
     }
@@ -771,6 +833,14 @@ export default function ReplayCamera() {
     return 'Very Low';
   };
 
+  const getZoneSizeLabel = () => {
+    const pct = Math.round(zoneSize * 100);
+    if (pct <= 40) return 'Tight';
+    if (pct <= 60) return 'Medium';
+    if (pct <= 75) return 'Wide';
+    return 'Full';
+  };
+
   const formatBaselineAge = () => {
     if (!baselineFrameRef.current) return 'None';
     const seconds = Math.floor(baselineAge / 1000);
@@ -778,6 +848,9 @@ export default function ReplayCamera() {
     if (seconds < 60) return `${seconds}s ago`;
     return `${Math.floor(seconds / 60)}m ago`;
   };
+
+  // Suppress unused variable warnings for functions used in JSX
+  void getStatusColor;
 
   return (
     <Layout>
@@ -922,8 +995,18 @@ export default function ReplayCamera() {
             {/* Status Overlay */}
             {cameraStatus === 'active' && (
               <>
+                {/* Warmup overlay */}
+                {detectionState === 'WARMUP' && (
+                  <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center z-10">
+                    <Camera className="h-12 w-12 text-blue-400 mb-3 animate-pulse" />
+                    <p className="text-white text-lg font-semibold">Camera warming up...</p>
+                    <p className="text-blue-300 text-3xl font-bold mt-2">{warmupCountdown}s</p>
+                    <p className="text-slate-400 text-sm mt-2">Auto-exposure & focus settling</p>
+                  </div>
+                )}
+
                 {/* Top-left detection state badge */}
-                <div className="absolute top-3 left-3 flex items-center gap-2">
+                <div className="absolute top-3 left-3 flex items-center gap-2 z-20">
                   <div className={`w-3 h-3 rounded-full ${getDetectionStateColor()} ${detectionState === 'WATCHING' ? 'animate-pulse' : ''}`} />
                   <span className="text-white text-sm font-medium bg-black/50 px-2 py-0.5 rounded">
                     {getStatusLabel()}
@@ -931,48 +1014,59 @@ export default function ReplayCamera() {
                 </div>
 
                 {/* Top-right target info + baseline age */}
-                <div className="absolute top-3 right-3 flex flex-col items-end gap-1">
+                <div className="absolute top-3 right-3 flex flex-col items-end gap-1 z-20">
                   <div className="bg-black/50 px-3 py-1 rounded text-white text-sm">
                     T{targetNumber} {selectedArcher ? `• ${selectedArcher.archer_name}` : ''}
                   </div>
-                  <div className="bg-black/50 px-2 py-0.5 rounded text-slate-300 text-xs">
-                    Baseline: {formatBaselineAge()}
-                  </div>
+                  {detectionState !== 'WARMUP' && (
+                    <div className="bg-black/50 px-2 py-0.5 rounded text-slate-300 text-xs">
+                      Baseline: {formatBaselineAge()}
+                    </div>
+                  )}
                 </div>
 
-                {/* Detection zone indicator (center 60%) */}
-                <div className="absolute inset-0 pointer-events-none">
-                  <div
-                    className={`absolute border rounded transition-colors duration-300 ${
-                      detectionState === 'WATCHING' ? 'border-emerald-400/40' :
-                      detectionState === 'TRIGGERED' ? 'border-red-400/60' :
-                      'border-amber-400/30'
-                    }`}
-                    style={{ top: '20%', left: '20%', width: '60%', height: '60%' }}
-                  />
-                </div>
+                {/* Detection zone indicator (dynamic based on zoneSize) */}
+                {detectionState !== 'WARMUP' && (
+                  <div className="absolute inset-0 pointer-events-none">
+                    <div
+                      className={`absolute border rounded transition-colors duration-300 ${
+                        detectionState === 'WATCHING' ? 'border-emerald-400/40' :
+                        detectionState === 'TRIGGERED' ? 'border-red-400/60' :
+                        'border-amber-400/30'
+                      }`}
+                      style={{
+                        top: `${((1 - zoneSize) / 2) * 100}%`,
+                        left: `${((1 - zoneSize) / 2) * 100}%`,
+                        width: `${zoneSize * 100}%`,
+                        height: `${zoneSize * 100}%`,
+                      }}
+                    />
+                  </div>
+                )}
 
                 {/* Motion level meter */}
-                <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2">
-                  <Eye className="h-4 w-4 text-white/70" />
-                  <div className="flex-1 h-2 bg-white/20 rounded-full overflow-hidden relative">
-                    {/* Threshold marker */}
-                    <div
-                      className="absolute top-0 bottom-0 w-0.5 bg-white/50 z-10"
-                      style={{ left: `${Math.min(sensitivity * 1000, 100)}%` }}
-                    />
-                    <div
-                      className={`h-full rounded-full transition-all duration-100 ${
-                        currentMotionLevel > sensitivity ? 'bg-red-400' :
-                        detectionState === 'WATCHING' ? 'bg-emerald-400' : 'bg-amber-400'
-                      }`}
-                      style={{ width: `${Math.min(currentMotionLevel * 1000, 100)}%` }}
-                    />
+                {detectionState !== 'WARMUP' && (
+                  <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2">
+                    <Eye className="h-4 w-4 text-white/70" />
+                    <div className="flex-1 h-2 bg-white/20 rounded-full overflow-hidden relative">
+                      {/* Threshold marker */}
+                      <div
+                        className="absolute top-0 bottom-0 w-0.5 bg-white/50 z-10"
+                        style={{ left: `${Math.min(sensitivity * 1000, 100)}%` }}
+                      />
+                      <div
+                        className={`h-full rounded-full transition-all duration-100 ${
+                          currentMotionLevel > sensitivity ? 'bg-red-400' :
+                          detectionState === 'WATCHING' ? 'bg-emerald-400' : 'bg-amber-400'
+                        }`}
+                        style={{ width: `${Math.min(currentMotionLevel * 1000, 100)}%` }}
+                      />
+                    </div>
+                    <span className="text-white/50 text-xs min-w-[3rem] text-right">
+                      {(currentMotionLevel * 100).toFixed(1)}%
+                    </span>
                   </div>
-                  <span className="text-white/50 text-xs min-w-[3rem] text-right">
-                    {(currentMotionLevel * 100).toFixed(1)}%
-                  </span>
-                </div>
+                )}
               </>
             )}
           </div>
@@ -1000,7 +1094,7 @@ export default function ReplayCamera() {
         )}
 
         {/* MANUAL CAPTURE BUTTON — always visible when camera active and listening */}
-        {cameraStatus === 'active' && recordingStatus === 'listening' && (
+        {cameraStatus === 'active' && recordingStatus === 'listening' && detectionState !== 'WARMUP' && (
           <Button
             onClick={triggerImpact}
             className="w-full h-20 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xl font-bold rounded-xl mb-4 shadow-lg shadow-amber-500/30 flex items-center justify-center gap-3 active:scale-95 transition-transform"
@@ -1010,40 +1104,71 @@ export default function ReplayCamera() {
           </Button>
         )}
 
-        {/* Motion Sensitivity Control */}
+        {/* Motion Sensitivity & Detection Zone Controls */}
         {cameraStatus === 'active' && (
           <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50 mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
-                {detectionState === 'WATCHING' ? <Eye className="h-4 w-4 text-emerald-400" /> : <EyeOff className="h-4 w-4 text-amber-400" />}
-                Trigger Sensitivity
-              </label>
-              <span className="text-xs text-slate-400">
-                {getSensitivityLabel()}
-                {' '}({(sensitivity * 100).toFixed(1)}%)
-              </span>
+            {/* Trigger Sensitivity */}
+            <div className="mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
+                  {detectionState === 'WATCHING' ? <Eye className="h-4 w-4 text-emerald-400" /> : <EyeOff className="h-4 w-4 text-amber-400" />}
+                  Trigger Sensitivity
+                </label>
+                <span className="text-xs text-slate-400">
+                  {getSensitivityLabel()}
+                  {' '}({(sensitivity * 100).toFixed(1)}%)
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0.005"
+                max="0.15"
+                step="0.005"
+                value={sensitivity}
+                onChange={(e) => setSensitivity(parseFloat(e.target.value))}
+                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+              />
+              <div className="flex justify-between text-xs text-slate-500 mt-1">
+                <span>More Sensitive (0.5%)</span>
+                <span>Less Sensitive (15%)</span>
+              </div>
             </div>
-            <input
-              type="range"
-              min="0.005"
-              max="0.15"
-              step="0.005"
-              value={sensitivity}
-              onChange={(e) => setSensitivity(parseFloat(e.target.value))}
-              className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
-            />
-            <div className="flex justify-between text-xs text-slate-500 mt-1">
-              <span>More Sensitive (0.5%)</span>
-              <span>Less Sensitive (15%)</span>
+
+            {/* Detection Zone Size */}
+            <div className="mb-4 pt-3 border-t border-slate-700/50">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
+                  <Crosshair className="h-4 w-4 text-blue-400" />
+                  Detection Zone
+                </label>
+                <span className="text-xs text-slate-400">
+                  {getZoneSizeLabel()} ({Math.round(zoneSize * 100)}%)
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0.3"
+                max="0.9"
+                step="0.05"
+                value={zoneSize}
+                onChange={(e) => setZoneSize(parseFloat(e.target.value))}
+                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+              />
+              <div className="flex justify-between text-xs text-slate-500 mt-1">
+                <span>Tight (target only)</span>
+                <span>Wide (full frame)</span>
+              </div>
             </div>
-            <p className="text-xs text-slate-500 mt-2">
-              Compares current frame to a stable baseline. Triggers only when scene was still and a sudden change appears (arrow impact). Camera shake is filtered out automatically.
+
+            <p className="text-xs text-slate-500">
+              Compares current frame to a stable baseline. Triggers only when scene was still and a sudden change appears (arrow impact). Camera shake is filtered out automatically. Baseline refreshes every 3s to handle gradual light changes.
             </p>
             {/* Detection state info */}
             <div className="flex items-center gap-3 mt-3 pt-3 border-t border-slate-700/50">
               <div className={`w-2.5 h-2.5 rounded-full ${getDetectionStateColor()}`} />
               <span className="text-xs text-slate-400">
-                {detectionState === 'STABILIZING' && 'Waiting for camera to stabilize (hold still ~1.5s)...'}
+                {detectionState === 'WARMUP' && `Camera warming up (${warmupCountdown}s) — auto-exposure settling...`}
+                {detectionState === 'STABILIZING' && 'Waiting for camera to stabilize (hold still ~3s)...'}
                 {detectionState === 'WATCHING' && 'Baseline set — watching for arrow impact'}
                 {detectionState === 'TRIGGERED' && 'Impact detected — recording clip...'}
               </span>
@@ -1057,14 +1182,15 @@ export default function ReplayCamera() {
             <h3 className="text-white font-semibold mb-3">How it works</h3>
             <ol className="text-slate-400 text-sm space-y-2 list-decimal list-inside">
               <li>Tap &quot;Start Camera&quot; above to begin recording</li>
-              <li>Point camera at the target and hold still — the system will stabilize</li>
+              <li>Camera warms up for 5 seconds (auto-exposure/focus settling)</li>
+              <li>Point camera at the target and hold still — the system will stabilize (~3s)</li>
               <li>Once stable (green &quot;Watching&quot;), any sudden change (arrow impact) triggers a clip</li>
               <li>Camera shake is automatically filtered — only sudden impacts from stillness trigger</li>
               <li>Sign in and select tournament/archer to auto-upload clips</li>
               <li>Target number auto-advances after each successful save</li>
             </ol>
             <p className="text-slate-500 text-xs mt-3">
-              Tip: Mount the camera on a tripod for best results. The system compares each frame to a stable baseline, so gradual changes (lighting, wind) won&apos;t trigger false positives. Use &quot;Capture Now&quot; as a manual backup.
+              Tip: Mount the camera on a tripod for best results. Use &quot;Detection Zone&quot; to focus on just the target face. The system requests high frame rate (up to 120fps) for smoother replays. Use &quot;Capture Now&quot; as a manual backup.
             </p>
           </div>
         )}
