@@ -435,6 +435,34 @@ class TournamentOpsService:
         await self.db.commit()
         return True
 
+    async def delete_tournament(self, tournament_id: int, user_id: str) -> bool:
+        """Delete a tournament owned by the user"""
+        query = text("DELETE FROM tournaments WHERE id = :tid AND user_id = :uid")
+        result = await self.db.execute(query, {"tid": tournament_id, "uid": user_id})
+        await self.db.commit()
+        return result.rowcount > 0
+
+    async def update_tournament(self, tournament_id: int, data: Dict[str, Any], user_id: str) -> Optional[Dict]:
+        """Update a tournament owned by the user"""
+        has_location = await self._check_location_column()
+        allowed_fields = ["name", "date", "num_targets", "divisions", "status", "courses", "mulligans", "scoring_template_id", "course_map_url"]
+        if has_location:
+            allowed_fields.append("location")
+        set_parts = []
+        params: Dict[str, Any] = {"tid": tournament_id, "uid": user_id}
+        for field in allowed_fields:
+            if field in data and data[field] is not None:
+                set_parts.append(f"{field} = :{field}")
+                params[field] = data[field]
+        if not set_parts:
+            return await self.get_tournament_public(tournament_id)
+        set_parts.append("updated_at = NOW()")
+        set_clause = ", ".join(set_parts)
+        query = text(f"UPDATE tournaments SET {set_clause} WHERE id = :tid AND user_id = :uid")
+        await self.db.execute(query, params)
+        await self.db.commit()
+        return await self.get_tournament_public(tournament_id)
+
     def _scoring_template_to_dict(self, t: Scoring_templates) -> Dict:
         return {
             "id": t.id,

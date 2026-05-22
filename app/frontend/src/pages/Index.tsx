@@ -316,7 +316,11 @@ export default function Index() {
                           e.preventDefault();
                           e.stopPropagation();
                           if (window.confirm(`Are you sure you want to delete "${t.name}"? This action cannot be undone.`)) {
-                            client.entities.tournaments.delete(Number(t.id)).then(() => {
+                            client.apiCall.invoke({
+                              url: `/api/v1/tournament/delete/${t.id}`,
+                              method: 'DELETE',
+                              data: {},
+                            }).then(() => {
                               setTournaments((prev) => prev.filter((tour) => tour.id !== t.id));
                             }).catch(() => {
                               alert('Failed to delete tournament. Please try again.');

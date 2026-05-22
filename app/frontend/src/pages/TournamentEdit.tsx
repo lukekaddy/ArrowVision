@@ -104,7 +104,11 @@ export default function TournamentEdit() {
   const fetchTournament = async () => {
     if (!id) return;
     try {
-      const res = await client.entities.tournaments.get(Number(id));
+      const res = await client.apiCall.invoke({
+        url: `/api/v1/tournament/public/${id}`,
+        method: 'GET',
+        data: {},
+      });
       const data = res?.data;
       if (!data) {
         navigate('/', { replace: true });
@@ -314,7 +318,9 @@ export default function TournamentEdit() {
     setSaving(true);
     try {
       const mulliganConfig = buildMulliganConfig();
-      await client.entities.tournaments.update(Number(id), {
+      await client.apiCall.invoke({
+        url: `/api/v1/tournament/update/${id}`,
+        method: 'PUT',
         data: {
           name,
           date,
@@ -327,6 +333,7 @@ export default function TournamentEdit() {
           course_map_url: courseMapUrl || undefined,
           status: 'auto',
         },
+        ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
       });
       navigate(`/dashboard/${id}`);
     } catch (err) {

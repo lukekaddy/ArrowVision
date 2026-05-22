@@ -41,6 +41,19 @@ class UpdateScorecardRequest(BaseModel):
     is_custom: Optional[bool] = None
 
 
+class UpdateTournamentRequest(BaseModel):
+    name: Optional[str] = None
+    date: Optional[str] = None
+    location: Optional[str] = None
+    num_targets: Optional[int] = None
+    divisions: Optional[str] = None
+    status: Optional[str] = None
+    courses: Optional[str] = None
+    mulligans: Optional[str] = None
+    scoring_template_id: Optional[int] = None
+    course_map_url: Optional[str] = None
+
+
 class SubmitScoreRequest(BaseModel):
     tournament_id: int
     archer_id: int
@@ -124,6 +137,48 @@ async def get_leaderboard(
 
 
 # ---------- Authenticated Routes ----------
+@router.delete("/delete/{tournament_id}")
+async def delete_tournament(
+    tournament_id: int,
+    current_user: UserInfo = Depends(get_current_custom_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a tournament (owner only)"""
+    service = TournamentOpsService(db)
+    try:
+        success = await service.delete_tournament(tournament_id, user_id=str(current_user.id))
+        if not success:
+            raise HTTPException(status_code=404, detail="Tournament not found or not owned by user")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting tournament: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/update/{tournament_id}")
+async def update_tournament(
+    tournament_id: int,
+    data: UpdateTournamentRequest,
+    current_user: UserInfo = Depends(get_current_custom_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a tournament (owner only)"""
+    service = TournamentOpsService(db)
+    try:
+        update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+        result = await service.update_tournament(tournament_id, update_data, user_id=str(current_user.id))
+        if not result:
+            raise HTTPException(status_code=404, detail="Tournament not found or not owned by user")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating tournament: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/my-tournaments")
 async def get_my_tournaments(
     current_user: UserInfo = Depends(get_current_custom_user),
