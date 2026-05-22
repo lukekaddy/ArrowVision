@@ -57,7 +57,7 @@ export default function MyGroup() {
   const [changingMode, setChangingMode] = useState(false);
   const [selectedMode, setSelectedMode] = useState('');
 
-  const isCreator = group?.creator_id === user?.id;
+  const isCreator = String(group?.creator_id) === String(user?.id);
 
   useEffect(() => {
     const fetchGroupData = async () => {
@@ -77,16 +77,23 @@ export default function MyGroup() {
         });
 
         const rawTournaments = res?.data?.items || res?.data || [];
+        const tournamentArray = Array.isArray(rawTournaments) ? rawTournaments : [];
 
-        // Response structure is [{tournament: {...}, registration: {...}, score_summary: {...}}, ...]
+        // Response structure from /my-tournaments is [{tournament: {...}, registration: {...}, score_summary: {...}}, ...]
         // Flatten to get tournament info with the tournament_id
-        const tournaments: MyTournament[] = rawTournaments.map((item: { tournament?: Record<string, unknown>; registration?: Record<string, unknown> }) => ({
-          id: (item.tournament as Record<string, unknown>)?.id as number,
-          tournament_id: (item.registration as Record<string, unknown>)?.tournament_id as number || (item.tournament as Record<string, unknown>)?.id as number,
-          tournament_name: (item.tournament as Record<string, unknown>)?.name as string,
-          name: (item.tournament as Record<string, unknown>)?.name as string,
-          group_number: (item.registration as Record<string, unknown>)?.group_number as number,
-        }));
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const tournaments: MyTournament[] = tournamentArray.map((item: any) => {
+          // Handle both nested format {tournament: {...}, registration: {...}} and flat format {id, name, ...}
+          const t = item.tournament || item;
+          const reg = item.registration || item;
+          return {
+            id: t.id,
+            tournament_id: reg.tournament_id || t.id,
+            tournament_name: t.name,
+            name: t.name,
+            group_number: reg.group_number,
+          };
+        });
 
         // Find a tournament where user has a group
         let foundGroup: Group | null = null;
@@ -116,8 +123,10 @@ export default function MyGroup() {
             })) as Group[];
 
             // Find the group that contains the current user
+            // user_id from backend is a string, user?.id from AuthContext is a number
+            // Use loose equality (==) to handle type mismatch
             const userGroup = groups.find((g) =>
-              g.members?.some((m) => m.user_id === user?.id)
+              g.members?.some((m) => String(m.user_id) === String(user?.id))
             );
 
             if (userGroup) {
@@ -317,7 +326,7 @@ export default function MyGroup() {
                 <span className="text-sm text-white">
                   {member.first_name} {member.last_name}
                 </span>
-                {member.user_id === group.creator_id && (
+                {String(member.user_id) === String(group.creator_id) && (
                   <span className="text-xs text-amber-400 ml-auto">Creator</span>
                 )}
               </div>
