@@ -32,10 +32,18 @@ type RecordingStatus = 'idle' | 'listening' | 'triggered' | 'uploading' | 'succe
 // Detection state machine
 type DetectionState = 'WARMUP' | 'STABILIZING' | 'WATCHING' | 'TRIGGERED';
 
+// Timestamped chunk for the ring buffer
+interface TimestampedChunk {
+  blob: Blob;
+  timestamp: number;
+}
+
 // Minimum clip size in bytes (5KB) - lowered to avoid discarding valid compressed clips
 const MIN_CLIP_SIZE_BYTES = 5 * 1024;
 // Post-trigger recording duration in ms (4s to ensure enough data)
 const POST_TRIGGER_DURATION_MS = 4000;
+// Pre-trigger duration to include in clip (ms)
+const PRE_TRIGGER_DURATION_MS = 3000;
 // Motion detection interval in ms (faster for arrow detection)
 const MOTION_DETECT_INTERVAL_MS = 50;
 // Analysis canvas dimensions (increased for close-range arrow detection at 2ft)
@@ -77,6 +85,12 @@ const RESTING_CALIBRATION_MS = 1000;
 // Periodic logging interval (ms)
 const LOG_INTERVAL_MS = 1000;
 
+// MediaRecorder restart interval (ms) — restart every 8 seconds to keep header chunk fresh
+const RECORDER_RESTART_INTERVAL_MS = 8000;
+
+// Timeslice for MediaRecorder data chunks (ms)
+const RECORDER_TIMESLICE_MS = 1000;
+
 export default function ReplayCamera() {
   const { user, token } = useAuth();
   const client = getClient();
@@ -86,9 +100,11 @@ export default function ReplayCamera() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  // The FIRST chunk from MediaRecorder contains the WebM initialization segment (EBML header + Segment info + Tracks).
-  // We MUST preserve it permanently and prepend it to every assembled clip for valid playback.
+  // Ring buffer of timestamped chunks (data chunks only, no header)
+  const chunksRef = useRef<TimestampedChunk[]>([]);
+  // The header chunk from the CURRENT MediaRecorder session.
+  // Contains the WebM/MP4 initialization segment + first few frames.
+  // Refreshed every time the recorder restarts (~8s) so it's always recent.
   const headerChunkRef = useRef<Blob | null>(null);
   const motionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
@@ -96,6 +112,10 @@ export default function ReplayCamera() {
   const isListeningRef = useRef<boolean>(false);
   // Lock that prevents ANY new trigger processing while a clip is being recorded/assembled/uploaded
   const isRecordingClipRef = useRef<boolean>(false);
+  // Periodic recorder restart interval ref
+  const recorderRestartIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Track the trigger timestamp for clip time-window selection
+  const triggerTimestampRef = useRef<number>(0);
 
   // Detection state machine refs
   const detectionStateRef = useRef<DetectionState>('WARMUP');
@@ -206,6 +226,10 @@ export default function ReplayCamera() {
     if (warmupIntervalRef.current) {
       clearInterval(warmupIntervalRef.current);
       warmupIntervalRef.current = null;
+    }
+    if (recorderRestartIntervalRef.current) {
+      clearInterval(recorderRestartIntervalRef.current);
+      recorderRestartIntervalRef.current = null;
     }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
@@ -347,12 +371,19 @@ export default function ReplayCamera() {
     }, 200);
   };
 
+  /**
+   * Start a new MediaRecorder session on the given stream.
+   * This captures the header chunk (init segment) fresh each time.
+   * The ring buffer is NOT cleared here — it accumulates across restarts
+   * because we track timestamps and select by time window.
+   */
   const startRecording = (stream: MediaStream) => {
     const mimeType = getSupportedMimeType();
 
+    // Clear ring buffer and header for fresh session
     chunksRef.current = [];
-    // Reset header chunk for new recording session — the first ondataavailable will capture it
     headerChunkRef.current = null;
+
     let recorder: MediaRecorder;
     try {
       const options: MediaRecorderOptions = { videoBitsPerSecond: 2500000 };
@@ -370,22 +401,28 @@ export default function ReplayCamera() {
 
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) {
-        // The FIRST chunk from MediaRecorder contains the WebM/MP4 initialization segment
-        // (EBML header + Segment info + Tracks). We store it permanently and never discard it.
+        // The FIRST chunk from MediaRecorder contains the WebM/MP4 initialization segment.
+        // We store it as the header chunk. Since we restart the recorder every ~8s,
+        // this header is always from at most ~8 seconds ago (not from camera setup).
         if (!headerChunkRef.current) {
           headerChunkRef.current = e.data;
-          console.log('[ReplayCamera] Header chunk captured and stored permanently:', {
+          console.log('[ReplayCamera] Header chunk captured:', {
             size: e.data.size,
             sizeKB: (e.data.size / 1024).toFixed(1) + ' KB',
             type: e.data.type,
           });
           return; // Don't add header to the rotating buffer
         }
-        // Subsequent chunks are data chunks — add to rotating ring buffer
-        chunksRef.current.push(e.data);
-        // Keep only last 12 data chunks (the header is stored separately)
-        if (chunksRef.current.length > 12) {
-          chunksRef.current = chunksRef.current.slice(-12);
+        // Subsequent chunks are data chunks — add to ring buffer with timestamp
+        const timestampedChunk: TimestampedChunk = {
+          blob: e.data,
+          timestamp: Date.now(),
+        };
+        chunksRef.current.push(timestampedChunk);
+        // Keep ring buffer to ~15 seconds of chunks (15 chunks at 1s timeslice)
+        const maxChunks = 15;
+        if (chunksRef.current.length > maxChunks) {
+          chunksRef.current = chunksRef.current.slice(-maxChunks);
         }
       }
     };
@@ -396,9 +433,9 @@ export default function ReplayCamera() {
         if (recorder.state === 'recording') {
           try { recorder.requestData(); } catch { /* ignore */ }
         }
-      }, 1000);
+      }, RECORDER_TIMESLICE_MS);
     } else {
-      recorder.start(1000);
+      recorder.start(RECORDER_TIMESLICE_MS);
     }
 
     mediaRecorderRef.current = recorder;
@@ -414,6 +451,116 @@ export default function ReplayCamera() {
     prevFrameDataRef.current = null;
     rollingMotionRef.current = [];
     stableStartTimeRef.current = null;
+
+    // Start periodic recorder restart to keep header chunk fresh
+    startRecorderRestartCycle();
+  };
+
+  /**
+   * Periodically restart the MediaRecorder to refresh the header chunk.
+   * This ensures the header (which contains both init segment + first video frames)
+   * is always from at most ~8 seconds ago, not from the very beginning of the session.
+   */
+  const startRecorderRestartCycle = () => {
+    // Clear any existing restart interval
+    if (recorderRestartIntervalRef.current) {
+      clearInterval(recorderRestartIntervalRef.current);
+      recorderRestartIntervalRef.current = null;
+    }
+
+    recorderRestartIntervalRef.current = setInterval(() => {
+      // DON'T restart if we're in the middle of recording a clip (triggered state)
+      if (isRecordingClipRef.current) {
+        console.log('[ReplayCamera] Skipping recorder restart — clip recording in progress');
+        return;
+      }
+
+      const recorder = mediaRecorderRef.current;
+      const stream = streamRef.current;
+      if (!recorder || !stream || !stream.active) return;
+
+      console.log('[ReplayCamera] Periodic recorder restart — refreshing header chunk');
+
+      // Stop current recorder
+      if (recorder.state === 'recording') {
+        try { recorder.requestData(); } catch { /* ignore */ }
+      }
+
+      // We do NOT clear the ring buffer on restart.
+      // Old chunks from the previous session won't be playable with the new header,
+      // but we track timestamps and will only use chunks from AFTER the latest header.
+      // Mark the restart time so we know which chunks are from the current session.
+      const restartTime = Date.now();
+
+      // Stop the old recorder
+      try {
+        if (recorder.state !== 'inactive') {
+          recorder.stop();
+        }
+      } catch { /* ignore */ }
+
+      // Clear iOS polling if active
+      if (dataPollingRef.current) {
+        clearInterval(dataPollingRef.current);
+        dataPollingRef.current = null;
+      }
+
+      // Discard chunks from before this restart (they're incompatible with new header)
+      chunksRef.current = chunksRef.current.filter(c => c.timestamp >= restartTime - PRE_TRIGGER_DURATION_MS);
+
+      // Start a fresh recorder on the same stream
+      headerChunkRef.current = null; // Will be captured from new recorder's first chunk
+
+      const mimeType = getSupportedMimeType();
+      let newRecorder: MediaRecorder;
+      try {
+        const options: MediaRecorderOptions = { videoBitsPerSecond: 2500000 };
+        if (mimeType) options.mimeType = mimeType;
+        newRecorder = new MediaRecorder(stream, options);
+      } catch {
+        try {
+          newRecorder = new MediaRecorder(stream);
+        } catch (e2) {
+          console.error('[ReplayCamera] Failed to create new MediaRecorder on restart:', e2);
+          return;
+        }
+      }
+
+      newRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          if (!headerChunkRef.current) {
+            headerChunkRef.current = e.data;
+            console.log('[ReplayCamera] New header chunk captured after restart:', {
+              size: e.data.size,
+              sizeKB: (e.data.size / 1024).toFixed(1) + ' KB',
+            });
+            return;
+          }
+          const timestampedChunk: TimestampedChunk = {
+            blob: e.data,
+            timestamp: Date.now(),
+          };
+          chunksRef.current.push(timestampedChunk);
+          const maxChunks = 15;
+          if (chunksRef.current.length > maxChunks) {
+            chunksRef.current = chunksRef.current.slice(-maxChunks);
+          }
+        }
+      };
+
+      if (isIOS()) {
+        newRecorder.start();
+        dataPollingRef.current = setInterval(() => {
+          if (newRecorder.state === 'recording') {
+            try { newRecorder.requestData(); } catch { /* ignore */ }
+          }
+        }, RECORDER_TIMESLICE_MS);
+      } else {
+        newRecorder.start(RECORDER_TIMESLICE_MS);
+      }
+
+      mediaRecorderRef.current = newRecorder;
+    }, RECORDER_RESTART_INTERVAL_MS);
   };
 
   const startMotionDetection = () => {
@@ -621,7 +768,8 @@ export default function ReplayCamera() {
         `maxCell: ${(maxCellPct * 100).toFixed(1)}% | f2f: ${(frameToFrameMotion * 100).toFixed(2)}% | ` +
         `prevF2F: ${(prevFrameToFrameMotionRef.current * 100).toFixed(2)}% | ` +
         `rolling: ${(rollingAvg * 100).toFixed(2)}% | baseline age: ${Math.floor(baselineAgeRef.current / 1000)}s | ` +
-        `hotCells: ${hotCellCount} | resting: global=${(restingGlobalMotionRef.current * 100).toFixed(2)}% maxCell=${(restingMaxCellRef.current * 100).toFixed(1)}% calibrated=${restingCalibratedRef.current}`
+        `hotCells: ${hotCellCount} | resting: global=${(restingGlobalMotionRef.current * 100).toFixed(2)}% maxCell=${(restingMaxCellRef.current * 100).toFixed(1)}% calibrated=${restingCalibratedRef.current} | ` +
+        `buffer: ${chunksRef.current.length} chunks`
       );
     }
 
@@ -811,6 +959,9 @@ export default function ReplayCamera() {
     setRecordingStatus('triggered');
     setStatusMessage('Impact detected! Capturing clip...');
 
+    // Record the trigger timestamp for time-window based chunk selection
+    triggerTimestampRef.current = Date.now();
+
     console.log('[ReplayCamera] Impact triggered. Recording post-impact for', POST_TRIGGER_DURATION_MS, 'ms');
 
     triggerTimeoutRef.current = setTimeout(() => {
@@ -825,6 +976,12 @@ export default function ReplayCamera() {
       console.warn('[ReplayCamera] generateClip called but recorder is inactive');
       resetAfterClip();
       return;
+    }
+
+    // Stop the periodic restart so it doesn't interfere with clip generation
+    if (recorderRestartIntervalRef.current) {
+      clearInterval(recorderRestartIntervalRef.current);
+      recorderRestartIntervalRef.current = null;
     }
 
     if (dataPollingRef.current) {
@@ -851,17 +1008,32 @@ export default function ReplayCamera() {
       }
     });
 
-    const totalChunks = chunksRef.current.length;
-    // Use last 7 data chunks (~7s of video: 3s pre + 4s post)
-    const clipDataChunks = chunksRef.current.slice(-7);
+    // Select chunks within the desired time window:
+    // From (triggerTime - PRE_TRIGGER_DURATION_MS) to (triggerTime + POST_TRIGGER_DURATION_MS)
+    const triggerTime = triggerTimestampRef.current;
+    const windowStart = triggerTime - PRE_TRIGGER_DURATION_MS;
+    const windowEnd = triggerTime + POST_TRIGGER_DURATION_MS;
+
+    const allChunks = chunksRef.current;
+    const clipDataChunks = allChunks.filter(
+      c => c.timestamp >= windowStart && c.timestamp <= windowEnd
+    );
+
     const headerChunk = headerChunkRef.current;
 
     console.log('[ReplayCamera] Clip generation:', {
-      totalDataChunksInBuffer: totalChunks,
-      dataChunksUsedForClip: clipDataChunks.length,
+      totalDataChunksInBuffer: allChunks.length,
+      triggerTime: new Date(triggerTime).toISOString(),
+      windowStartMs: windowStart,
+      windowEndMs: windowEnd,
+      windowDurationMs: windowEnd - windowStart,
+      chunksInWindow: clipDataChunks.length,
+      chunkTimestamps: clipDataChunks.map(c => ({
+        offsetFromTrigger: c.timestamp - triggerTime,
+        size: c.blob.size,
+      })),
       headerChunkPresent: !!headerChunk,
       headerChunkSize: headerChunk ? headerChunk.size : 0,
-      dataChunkSizes: clipDataChunks.map(c => c.size),
     });
 
     if (!headerChunk) {
@@ -873,7 +1045,7 @@ export default function ReplayCamera() {
     }
 
     if (clipDataChunks.length === 0) {
-      console.error('[ReplayCamera] No data chunks captured — zero data chunks available');
+      console.error('[ReplayCamera] No data chunks in time window — zero data chunks available');
       setStatusMessage('No video data captured. Try again.');
       setRecordingStatus('error');
       setTimeout(() => resetAfterClip(), 3000);
@@ -883,7 +1055,11 @@ export default function ReplayCamera() {
     const mimeType = getSupportedMimeType() || 'video/mp4';
     // CRITICAL: Always prepend the header chunk (initialization segment) before data chunks.
     // Without the header, the resulting blob is not a valid WebM/MP4 file and cannot be demuxed.
-    const clipBlob = new Blob([headerChunk, ...clipDataChunks], { type: mimeType });
+    // Since we restart the recorder every ~8s, the header is from at most ~8s ago (recent footage).
+    const clipBlob = new Blob(
+      [headerChunk, ...clipDataChunks.map(c => c.blob)],
+      { type: mimeType }
+    );
 
     console.log('[ReplayCamera] Clip blob assembled (header + data):', {
       blobSize: clipBlob.size,
@@ -892,6 +1068,9 @@ export default function ReplayCamera() {
       headerIncluded: true,
       headerSize: headerChunk.size,
       numDataChunks: clipDataChunks.length,
+      timeSpanMs: clipDataChunks.length > 0
+        ? clipDataChunks[clipDataChunks.length - 1].timestamp - clipDataChunks[0].timestamp
+        : 0,
     });
 
     if (clipBlob.size < MIN_CLIP_SIZE_BYTES) {
