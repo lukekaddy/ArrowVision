@@ -76,7 +76,17 @@ export default function MyGroup() {
           },
         });
 
-        const tournaments: MyTournament[] = res?.data?.items || res?.data || [];
+        const rawTournaments = res?.data?.items || res?.data || [];
+
+        // Response structure is [{tournament: {...}, registration: {...}, score_summary: {...}}, ...]
+        // Flatten to get tournament info with the tournament_id
+        const tournaments: MyTournament[] = rawTournaments.map((item: { tournament?: Record<string, unknown>; registration?: Record<string, unknown> }) => ({
+          id: (item.tournament as Record<string, unknown>)?.id as number,
+          tournament_id: (item.registration as Record<string, unknown>)?.tournament_id as number || (item.tournament as Record<string, unknown>)?.id as number,
+          tournament_name: (item.tournament as Record<string, unknown>)?.name as string,
+          name: (item.tournament as Record<string, unknown>)?.name as string,
+          group_number: (item.registration as Record<string, unknown>)?.group_number as number,
+        }));
 
         // Find a tournament where user has a group
         let foundGroup: Group | null = null;
@@ -84,6 +94,7 @@ export default function MyGroup() {
 
         for (const t of tournaments) {
           const tournamentId = t.tournament_id || t.id;
+          if (!tournamentId) continue;
           try {
             const groupRes = await client.apiCall.invoke({
               url: `/api/v1/groups/tournament/${tournamentId}`,
