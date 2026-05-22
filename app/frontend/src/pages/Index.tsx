@@ -4,7 +4,7 @@ import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
-import { Trophy, ClipboardList, BarChart3, Calendar, MapPin, Zap, Pencil } from 'lucide-react';
+import { Trophy, ClipboardList, BarChart3, Calendar, MapPin, Zap, Pencil, Trash2 } from 'lucide-react';
 
 const HERO_URL = 'https://mgx-backend-cdn.metadl.com/generate/images/1230028/2026-05-14/orhcm3yaagpa/hero-archery-sunset.png';
 
@@ -251,13 +251,13 @@ export default function Index() {
               return (
                 <div
                   key={t.id}
-                  className="group rounded-xl border border-slate-700/50 bg-slate-800/50 hover:bg-slate-800 hover:border-emerald-500/30 transition-all p-5 relative"
+                  className="group rounded-xl border border-slate-700/50 bg-slate-800/50 hover:bg-slate-800 hover:border-emerald-500/30 transition-all p-5 relative isolate"
                 >
                   <Link
                     to={user ? `/dashboard/${t.id}` : '/leaderboard'}
                     className="block"
                   >
-                    <div className={`flex items-start justify-between mb-3 ${isUpcoming && user ? 'pr-10' : ''}`}>
+                    <div className={`flex items-start justify-between mb-3 ${isUpcoming && user ? 'pr-20' : ''}`}>
                       <h3 className="text-lg font-semibold text-white group-hover:text-emerald-400 transition-colors pr-2">
                         {t.name}
                       </h3>
@@ -295,14 +295,38 @@ export default function Index() {
                     )}
                   </Link>
                   {isUpcoming && user && (
-                    <Link
-                      to={`/edit-tournament/${t.id}`}
-                      className="absolute top-4 right-4 z-10 h-8 w-8 flex items-center justify-center rounded-lg bg-slate-700/80 border border-slate-600/50 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/10 transition-all"
-                      title="Edit Tournament"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Link>
+                    <div className="absolute top-4 right-4 z-20 flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        className="h-8 w-8 flex items-center justify-center rounded-lg bg-slate-700/80 border border-slate-600/50 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/10 transition-all"
+                        title="Edit Tournament"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          navigate(`/edit-tournament/${t.id}`);
+                        }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        className="h-8 w-8 flex items-center justify-center rounded-lg bg-slate-700/80 border border-slate-600/50 text-slate-400 hover:text-red-400 hover:border-red-500/50 hover:bg-red-500/10 transition-all"
+                        title="Delete Tournament"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (window.confirm(`Are you sure you want to delete "${t.name}"? This action cannot be undone.`)) {
+                            client.entities.tournaments.delete(Number(t.id)).then(() => {
+                              setTournaments((prev) => prev.filter((tour) => tour.id !== t.id));
+                            }).catch(() => {
+                              alert('Failed to delete tournament. Please try again.');
+                            });
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   )}
                 </div>
               );
