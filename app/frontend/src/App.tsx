@@ -7,6 +7,7 @@ import Index from './pages/Index';
 import Landing from './pages/Landing';
 import AuthPage from './pages/AuthPage';
 import TournamentCreate from './pages/TournamentCreate';
+import TournamentEdit from './pages/TournamentEdit';
 import TournamentDashboard from './pages/TournamentDashboard';
 import Scorecard from './pages/Scorecard';
 import Leaderboard from './pages/Leaderboard';
@@ -28,6 +29,7 @@ const AppRoutes = () => (
     <Route path="/landing" element={<Landing />} />
     <Route path="/auth" element={<AuthPage />} />
     <Route path="/create-tournament" element={<TournamentCreate />} />
+    <Route path="/edit-tournament/:id" element={<TournamentEdit />} />
     <Route path="/create-scorecard" element={<CreateScorecard />} />
     <Route path="/dashboard/:id" element={<TournamentDashboard />} />
     <Route path="/scorecard" element={<Scorecard />} />

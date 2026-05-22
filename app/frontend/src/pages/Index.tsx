@@ -4,7 +4,7 @@ import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
-import { Trophy, ClipboardList, BarChart3, Calendar, MapPin, Zap } from 'lucide-react';
+import { Trophy, ClipboardList, BarChart3, Calendar, MapPin, Zap, Pencil } from 'lucide-react';
 
 const HERO_URL = 'https://mgx-backend-cdn.metadl.com/generate/images/1230028/2026-05-14/orhcm3yaagpa/hero-archery-sunset.png';
 
@@ -247,49 +247,64 @@ export default function Index() {
             {upcomingTournaments.map((t) => {
               const courses = parseCourses(t.courses);
               const status = t.status === 'auto' ? inferStatus(t.date) : t.status;
+              const isUpcoming = status === 'upcoming';
               return (
-                <Link
+                <div
                   key={t.id}
-                  to={user ? `/dashboard/${t.id}` : '/leaderboard'}
-                  className="group rounded-xl border border-slate-700/50 bg-slate-800/50 hover:bg-slate-800 hover:border-emerald-500/30 transition-all p-5"
+                  className="group rounded-xl border border-slate-700/50 bg-slate-800/50 hover:bg-slate-800 hover:border-emerald-500/30 transition-all p-5 relative"
                 >
-                  <div className="flex items-start justify-between mb-3">
-                    <h3 className="text-lg font-semibold text-white group-hover:text-emerald-400 transition-colors">
-                      {t.name}
-                    </h3>
-                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5 ${getStatusStyle(status)}`}>
-                      {status === 'active' && (
-                        <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  <Link
+                    to={user ? `/dashboard/${t.id}` : '/leaderboard'}
+                    className="block"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <h3 className="text-lg font-semibold text-white group-hover:text-emerald-400 transition-colors pr-8">
+                        {t.name}
+                      </h3>
+                      <span className={`text-xs font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5 ${getStatusStyle(status)}`}>
+                        {status === 'active' && (
+                          <span className="relative flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                          </span>
+                        )}
+                        {status}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-400">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="h-3.5 w-3.5" /> {t.date}
+                      </span>
+                      {t.location && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="h-3.5 w-3.5 text-emerald-400/70" /> {t.location}
                         </span>
                       )}
-                      {status}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-400">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="h-3.5 w-3.5" /> {t.date}
-                    </span>
-                    {t.location && (
-                      <span className="flex items-center gap-1">
-                        <MapPin className="h-3.5 w-3.5 text-emerald-400/70" /> {t.location}
-                      </span>
-                    )}
-                    {courses.length > 0 && (
-                      <span>{courses.length} course{courses.length > 1 ? 's' : ''}</span>
-                    )}
-                  </div>
-                  {t.divisions && (
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      {t.divisions.split(',').map((d) => (
-                        <span key={d.trim()} className="text-xs px-2 py-0.5 rounded bg-slate-700/50 text-slate-400">
-                          {d.trim()}
-                        </span>
-                      ))}
+                      {courses.length > 0 && (
+                        <span>{courses.length} course{courses.length > 1 ? 's' : ''}</span>
+                      )}
                     </div>
+                    {t.divisions && (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {t.divisions.split(',').map((d) => (
+                          <span key={d.trim()} className="text-xs px-2 py-0.5 rounded bg-slate-700/50 text-slate-400">
+                            {d.trim()}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </Link>
+                  {isUpcoming && user && (
+                    <Link
+                      to={`/edit-tournament/${t.id}`}
+                      className="absolute top-4 right-14 h-8 w-8 flex items-center justify-center rounded-lg bg-slate-700/50 border border-slate-600/50 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/10 transition-all"
+                      title="Edit Tournament"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Link>
                   )}
-                </Link>
+                </div>
               );
             })}
           </div>

@@ -80,6 +80,9 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 - [x] Update ArcherRegister.tsx with "Start a Group" toggle, searchable multi-select of ungrouped archers
 - [x] Create MyGroup.tsx page with group info, members, shooting order, leave/manage options
 - [x] Add /archer/group route and "My Group" nav link for archers
+- [x] Build TournamentEdit page for editing upcoming tournaments
+- [x] Add /edit-tournament/:id route to App.tsx
+- [x] Add Edit button (pencil icon) on upcoming tournament cards in Index.tsx
 
 - [x] Rename Upload Replay to "Replay Camera" and add to main nav tabs
 - [x] Build Replay Camera page with live camera preview, mic access, wake lock, target/shooter display, status
