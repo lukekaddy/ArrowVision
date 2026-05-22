@@ -18,6 +18,7 @@ import ArcherHome from './pages/ArcherHome';
 import ArcherRegister from './pages/ArcherRegister';
 import ArcherScorecards from './pages/ArcherScorecards';
 import Profile from './pages/Profile';
+import MyGroup from './pages/MyGroup';
 
 const queryClient = new QueryClient();
 
@@ -38,6 +39,7 @@ const AppRoutes = () => (
     <Route path="/archer" element={<ArcherHome />} />
     <Route path="/archer/register/:id" element={<ArcherRegister />} />
     <Route path="/archer/my-scorecards" element={<ArcherScorecards />} />
+    <Route path="/archer/group" element={<MyGroup />} />
   </Routes>
 );
 

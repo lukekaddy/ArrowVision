@@ -73,6 +73,14 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 - [x] Build GET /api/v1/replays/get endpoint to retrieve replay by archer+target
 - [x] Update SmartScore page to fetch and display actual uploaded replay video
 
+- [x] Create archer_groups database table (tournament_id, group_name, group_number, shooting_order_mode, creator_id)
+- [x] Add group_name column to tournament_archers table
+- [x] Build backend group management service (create, leave, get groups, get ungrouped, shooting order, update mode)
+- [x] Build backend group management router with 6 endpoints at /api/v1/groups/*
+- [x] Update ArcherRegister.tsx with "Start a Group" toggle, searchable multi-select of ungrouped archers
+- [x] Create MyGroup.tsx page with group info, members, shooting order, leave/manage options
+- [x] Add /archer/group route and "My Group" nav link for archers
+
 - [x] Rename Upload Replay to "Replay Camera" and add to main nav tabs
 - [x] Build Replay Camera page with live camera preview, mic access, wake lock, target/shooter display, status
 - [x] Implement continuous video buffer (rolling 10s ring buffer using MediaRecorder)

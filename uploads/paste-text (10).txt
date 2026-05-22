@@ -1,0 +1,98 @@
+Group Creation & Management
+Registration Flow
+
+During archer registration, add a new optional field:
+
+“Start a Group” (checkbox or toggle)
+
+If selected:
+
+Display a searchable multi-select dropdown containing all registered archers for the current tournament who are not already assigned to a group.
+Show each archer using:
+First Name
+Last Name
+Include:
+Search/filter functionality
+Multi-select support
+Smooth handling for long lists
+
+Example:
+If 10 registered archers are currently ungrouped, all 10 should appear in the dropdown and be selectable.
+
+The user should be able to:
+
+Select one or more archers
+Confirm creation of the group
+Automatically create and assign:
+A unique group number
+Group membership for all selected users
+Optional Group Name
+
+Allow the user creating the group to optionally enter:
+
+A custom group name
+
+If no name is entered:
+
+Default to something like “Group #X”
+Leaving a Group
+
+All archers must always have the option to:
+
+Leave their current group at any time
+
+When a user leaves:
+
+Remove them from the group
+Recalculate the group shooting order if necessary
+If the group becomes empty:
+Delete the group
+If only one archer remains:
+Allow them to continue solo OR dissolve the group automatically based on existing tournament rules
+Shooting Order System
+
+After a group is created, allow the group creator (or all members if preferred) to configure the group shooting order.
+
+Provide these 3 default shooting order modes:
+
+1. Round Robin
+Fixed rotating order
+Determined before shooting begins
+Rotation advances normally after each target
+2. Random
+Randomized shooting order
+Determined before shooting begins
+Can reshuffle each target OR remain fixed for the round depending on implementation preference
+3. Highest Score First
+Shooting order is recalculated after every target
+This mode only becomes active after all group members complete the first target
+
+Ordering rules:
+
+Archer with the highest current score shoots first
+If scores are tied:
+Archer with the higher total cumulative points shoots first
+If cumulative points are also tied:
+Randomly determine order between tied archers
+Scorecard Integration
+
+The current shooting order must always be reflected in:
+
+The archer scorecard view
+Any live scoring/group management interfaces
+
+When shooting order changes:
+
+Update all relevant views immediately
+Additional Requirements
+Ensure group assignment updates are transactional and consistent
+Prevent duplicate group assignments
+Prevent selecting archers already assigned to another group
+Ensure real-time synchronization if multiple users are registering simultaneously
+Maintain compatibility with existing tournament and scoring logic
+Add validation and edge-case handling for:
+Users leaving mid-event
+Last-minute group changes
+Ties in scoring
+Solo archers
+Deleted groups

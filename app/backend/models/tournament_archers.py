@@ -16,6 +16,7 @@ class Tournament_archers(Base):
     phone = Column(String, nullable=True)
     division = Column(String, nullable=True)
     group_number = Column(Integer, nullable=True)
+    group_name = Column(String, nullable=True)
     target_number = Column(Integer, nullable=True)
     role = Column(String, nullable=True)
     purchased_mulligans = Column(String, nullable=True)

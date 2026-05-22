@@ -8,7 +8,7 @@
         },
         "user_id": {
             "type": "string",
-            "description": "User ID"
+            "description": "User ID of the archer"
         },
         "tournament_id": {
             "type": "integer",
@@ -16,39 +16,43 @@
         },
         "archer_name": {
             "type": "string",
-            "description": "Archer display name"
+            "description": "Display name of the archer"
         },
         "first_name": {
             "type": "string",
-            "description": "Archer first name"
+            "description": "First name"
         },
         "last_name": {
             "type": "string",
-            "description": "Archer last name"
+            "description": "Last name"
         },
         "phone": {
             "type": "string",
-            "description": "Archer phone number"
+            "description": "Phone number"
         },
         "division": {
             "type": "string",
-            "description": "Division"
+            "description": "Division category"
         },
         "group_number": {
             "type": "integer",
-            "description": "Group number"
+            "description": "Group number assigned"
+        },
+        "group_name": {
+            "type": "string",
+            "description": "Name of the group the archer belongs to"
         },
         "target_number": {
             "type": "integer",
-            "description": "Target number"
+            "description": "Target number assigned"
         },
         "role": {
             "type": "string",
-            "description": "Role"
+            "description": "Role in tournament (archer, scorekeeper, etc)"
         },
         "purchased_mulligans": {
             "type": "string",
-            "description": "JSON string of purchased mulligan types and counts"
+            "description": "JSON string of purchased mulligans"
         }
     },
     "required": [

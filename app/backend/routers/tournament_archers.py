@@ -29,6 +29,7 @@ class Tournament_archersData(BaseModel):
     phone: str = None
     division: str = None
     group_number: int = None
+    group_name: str = None
     target_number: int = None
     role: str = None
     purchased_mulligans: str = None
@@ -43,6 +44,7 @@ class Tournament_archersUpdateData(BaseModel):
     phone: Optional[str] = None
     division: Optional[str] = None
     group_number: Optional[int] = None
+    group_name: Optional[str] = None
     target_number: Optional[int] = None
     role: Optional[str] = None
     purchased_mulligans: Optional[str] = None
@@ -59,6 +61,7 @@ class Tournament_archersResponse(BaseModel):
     phone: Optional[str] = None
     division: Optional[str] = None
     group_number: Optional[int] = None
+    group_name: Optional[str] = None
     target_number: Optional[int] = None
     role: Optional[str] = None
     purchased_mulligans: Optional[str] = None

@@ -1,0 +1,37 @@
+{
+    "title": "archer_groups",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "tournament_id": {
+            "type": "integer",
+            "description": "Tournament ID this group belongs to"
+        },
+        "group_name": {
+            "type": "string",
+            "description": "Name of the archer group"
+        },
+        "group_number": {
+            "type": "integer",
+            "description": "Numeric identifier for the group within a tournament"
+        },
+        "shooting_order_mode": {
+            "type": "string",
+            "description": "Shooting order mode: round_robin, random, or highest_score_first. Default round_robin"
+        },
+        "creator_id": {
+            "type": "string",
+            "description": "User ID of the group creator"
+        }
+    },
+    "required": [
+        "id",
+        "tournament_id",
+        "group_name",
+        "group_number",
+        "creator_id"
+    ]
+}
