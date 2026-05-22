@@ -164,6 +164,16 @@ export default function AuthPage() {
                 className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 h-11"
               />
             </div>
+            <div className="flex justify-end">
+              <Link
+                to="/forgot-password"
+                className={`text-sm font-medium transition-colors ${
+                  isAdmin ? 'text-emerald-400 hover:text-emerald-300' : 'text-amber-400 hover:text-amber-300'
+                }`}
+              >
+                Forgot Password?
+              </Link>
+            </div>
             <Button
               type="submit"
               disabled={submitting}

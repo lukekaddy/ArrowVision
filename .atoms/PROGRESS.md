@@ -92,6 +92,9 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 - [x] Implement auto-upload to cloud storage + database record creation
 - [x] Add scorecard integration (replay icon per target, inline video playback)
 
+- [x] Add download button for arrow replay video on SmartScore page
+- [x] Add Forgot Password UI flow (placeholder, no email service)
+
 ## Progress Log
 - Backend tables created: tournaments, tournament_archers, scores
 - Custom API router created: /api/v1/tournament/* for public and cross-user operations

@@ -4,7 +4,7 @@ import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
-import { Crosshair, ArrowLeft, Play, Edit3, Lock, Loader2, VideoOff } from 'lucide-react';
+import { Crosshair, ArrowLeft, Play, Edit3, Lock, Loader2, VideoOff, Download } from 'lucide-react';
 
 export default function SmartScore() {
   const navigate = useNavigate();
@@ -391,14 +391,39 @@ export default function SmartScore() {
                   )}
                 </button>
               </div>
-              {/* Replay Button */}
-              <Button
-                onClick={replayVideo}
-                variant="ghost"
-                className="w-full mt-2 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 gap-2"
-              >
-                <Play className="h-4 w-4" /> Replay Clip
-              </Button>
+              {/* Replay & Download Buttons */}
+              <div className="flex gap-2 mt-2">
+                <Button
+                  onClick={replayVideo}
+                  variant="ghost"
+                  className="flex-1 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 gap-2"
+                >
+                  <Play className="h-4 w-4" /> Replay Clip
+                </Button>
+                <Button
+                  onClick={async () => {
+                    if (!replayVideoUrl) return;
+                    try {
+                      const response = await fetch(replayVideoUrl);
+                      const blob = await response.blob();
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `replay-target${targetNumber}-${archerName || 'archer'}.mp4`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                    } catch (err) {
+                      console.error('Download failed:', err);
+                    }
+                  }}
+                  variant="ghost"
+                  className="text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 gap-2 px-4"
+                >
+                  <Download className="h-4 w-4" /> Save
+                </Button>
+              </div>
             </>
           ) : (
             <div className="flex flex-col items-center justify-center h-48 bg-slate-800/50 rounded-2xl border-2 border-slate-700/50">

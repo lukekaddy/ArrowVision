@@ -20,6 +20,7 @@ import ArcherRegister from './pages/ArcherRegister';
 import ArcherScorecards from './pages/ArcherScorecards';
 import Profile from './pages/Profile';
 import MyGroup from './pages/MyGroup';
+import ForgotPassword from './pages/ForgotPassword';
 
 const queryClient = new QueryClient();
 
@@ -28,6 +29,7 @@ const AppRoutes = () => (
     <Route path="/" element={<Index />} />
     <Route path="/landing" element={<Landing />} />
     <Route path="/auth" element={<AuthPage />} />
+    <Route path="/forgot-password" element={<ForgotPassword />} />
     <Route path="/create-tournament" element={<TournamentCreate />} />
     <Route path="/edit-tournament/:id" element={<TournamentEdit />} />
     <Route path="/create-scorecard" element={<CreateScorecard />} />
