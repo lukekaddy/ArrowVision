@@ -32,29 +32,41 @@ type RecordingStatus = 'idle' | 'listening' | 'triggered' | 'uploading' | 'succe
 // Detection state machine
 type DetectionState = 'WARMUP' | 'STABILIZING' | 'WATCHING' | 'TRIGGERED';
 
-// Minimum clip size in bytes (50KB) - anything smaller is likely corrupted/empty
-const MIN_CLIP_SIZE_BYTES = 50 * 1024;
-// Post-trigger recording duration in ms
-const POST_TRIGGER_DURATION_MS = 3000;
+// Minimum clip size in bytes (5KB) - lowered to avoid discarding valid compressed clips
+const MIN_CLIP_SIZE_BYTES = 5 * 1024;
+// Post-trigger recording duration in ms (4s to ensure enough data)
+const POST_TRIGGER_DURATION_MS = 4000;
 // Motion detection interval in ms (faster for arrow detection)
 const MOTION_DETECT_INTERVAL_MS = 50;
-// Analysis canvas dimensions (smaller for speed)
-const ANALYSIS_WIDTH = 120;
-const ANALYSIS_HEIGHT = 90;
+// Analysis canvas dimensions (increased for close-range arrow detection at 2ft)
+const ANALYSIS_WIDTH = 240;
+const ANALYSIS_HEIGHT = 180;
 // Rolling average window size (number of frames to track)
 const ROLLING_WINDOW_SIZE = 20;
 // Time scene must be stable before entering WATCHING state (ms) — increased for outdoor use
 const STABILIZE_DURATION_MS = 3000;
 // Shake threshold - rolling average above this means camera is shaking (2% for outdoor light variation)
 const SHAKE_THRESHOLD = 0.02;
-// Default trigger sensitivity (baseline comparison threshold) — 5% for outdoor conditions
-const DEFAULT_SENSITIVITY = 0.05;
+// Default trigger sensitivity (global baseline comparison threshold) — 1% for better arrow detection
+const DEFAULT_SENSITIVITY = 0.01;
 // Camera warmup duration in ms (let auto-exposure/focus settle)
 const WARMUP_DURATION_MS = 5000;
-// Baseline refresh interval when stable (ms) — refresh every 3s to handle gradual light changes
-const BASELINE_REFRESH_INTERVAL_MS = 3000;
+// Baseline refresh interval when stable (ms) — refresh every 10s to give more time for arrow detection
+const BASELINE_REFRESH_INTERVAL_MS = 10000;
 // Default detection zone size (percentage of frame center to analyze)
 const DEFAULT_ZONE_SIZE = 0.5; // 50%
+
+// Grid-based detection constants
+const GRID_COLS = 6;
+const GRID_ROWS = 4;
+const GRID_CELL_THRESHOLD = 0.10; // 10% of pixels in a single cell must change to trigger (lowered for close-range)
+
+// Frame-to-frame spike detection constants
+const SPIKE_LOW_THRESHOLD = 0.005; // Previous frame-to-frame motion must be below this (0.5%)
+const SPIKE_HIGH_THRESHOLD = 0.02; // Current frame-to-frame motion must exceed this (2%) for spike trigger
+
+// Periodic logging interval (ms)
+const LOG_INTERVAL_MS = 1000;
 
 export default function ReplayCamera() {
   const { user, token } = useAuth();
@@ -81,6 +93,13 @@ export default function ReplayCamera() {
   const stableStartTimeRef = useRef<number | null>(null);
   const baselineAgeRef = useRef<number>(0); // ms since baseline was set
 
+  // Frame-to-frame spike detection refs
+  const prevFrameToFrameMotionRef = useRef<number>(0);
+  const lastLogTimeRef = useRef<number>(0);
+
+  // Debug view refs
+  const debugCanvasRef = useRef<HTMLCanvasElement>(null);
+
   // Warmup refs
   const warmupCompleteRef = useRef<boolean>(false);
   const warmupStartTimeRef = useRef<number>(0);
@@ -102,6 +121,7 @@ export default function ReplayCamera() {
   const [detectionState, setDetectionState] = useState<DetectionState>('WARMUP');
   const [baselineAge, setBaselineAge] = useState(0);
   const [warmupCountdown, setWarmupCountdown] = useState(0);
+  const [triggeredCell, setTriggeredCell] = useState<{ col: number; row: number; pct: number } | null>(null);
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
   const [coursesConfig, setCoursesConfig] = useState<CourseConfig[]>([]);
@@ -110,6 +130,8 @@ export default function ReplayCamera() {
   const [selectedArcher, setSelectedArcher] = useState<Archer | null>(null);
   const [targetNumber, setTargetNumber] = useState(1);
   const [clipCount, setClipCount] = useState(0);
+  const [debugView, setDebugView] = useState(false);
+  const debugViewRef = useRef(false);
 
   // Keep refs in sync with state
   useEffect(() => { targetNumberRef.current = targetNumber; }, [targetNumber]);
@@ -123,6 +145,7 @@ export default function ReplayCamera() {
   useEffect(() => { sensitivityRef.current = sensitivity; }, [sensitivity]);
   const zoneSizeRef = useRef(zoneSize);
   useEffect(() => { zoneSizeRef.current = zoneSize; }, [zoneSize]);
+  useEffect(() => { debugViewRef.current = debugView; }, [debugView]);
 
   // Fetch tournaments on mount
   useEffect(() => {
@@ -183,6 +206,8 @@ export default function ReplayCamera() {
     isListeningRef.current = false;
     isRecordingClipRef.current = false;
     warmupCompleteRef.current = false;
+    prevFrameToFrameMotionRef.current = 0;
+    lastLogTimeRef.current = 0;
   };
 
   const requestWakeLock = async () => {
@@ -389,46 +414,105 @@ export default function ReplayCamera() {
     const imageData = ctx.getImageData(zoneX, zoneY, zoneW, zoneH);
     const pixels = imageData.data;
 
-    // Convert to grayscale, sampling every other pixel (skip odd rows and columns) for 4x speed
-    const sampledWidth = Math.floor(zoneW / 2);
-    const sampledHeight = Math.floor(zoneH / 2);
-    const totalSampled = sampledWidth * sampledHeight;
-    const currentGrayscale = new Uint8Array(totalSampled);
+    // Convert to grayscale at full resolution within the zone (no subsampling for better arrow detection)
+    const totalPixels = zoneW * zoneH;
+    const currentGrayscale = new Uint8Array(totalPixels);
 
-    let idx = 0;
-    for (let row = 0; row < zoneH; row += 2) {
-      for (let col = 0; col < zoneW; col += 2) {
-        const pixelIdx = (row * zoneW + col) * 4;
-        currentGrayscale[idx] = Math.round(
-          (pixels[pixelIdx] + pixels[pixelIdx + 1] + pixels[pixelIdx + 2]) / 3
-        );
-        idx++;
-      }
+    for (let i = 0; i < totalPixels; i++) {
+      const pixelIdx = i * 4;
+      currentGrayscale[i] = Math.round(
+        (pixels[pixelIdx] + pixels[pixelIdx + 1] + pixels[pixelIdx + 2]) / 3
+      );
     }
 
     const prevFrame = prevFrameDataRef.current;
     const now = Date.now();
 
-    // --- Frame-to-frame motion (for shake detection) ---
+    // --- Frame-to-frame motion (for shake detection AND spike detection) ---
     let frameToFrameMotion = 0;
-    if (prevFrame && prevFrame.length === totalSampled) {
+    if (prevFrame && prevFrame.length === totalPixels) {
       let diffSum = 0;
-      for (let i = 0; i < totalSampled; i++) {
+      for (let i = 0; i < totalPixels; i++) {
         diffSum += Math.abs(currentGrayscale[i] - prevFrame[i]);
       }
-      // Normalize: max possible diff per pixel is 255, so ratio = diffSum / (totalSampled * 255)
-      frameToFrameMotion = diffSum / (totalSampled * 255);
+      // Normalize: max possible diff per pixel is 255, so ratio = diffSum / (totalPixels * 255)
+      frameToFrameMotion = diffSum / (totalPixels * 255);
     }
 
     // --- Baseline comparison (for impact detection) ---
     let baselineMotion = 0;
+    let cellTriggered: { col: number; row: number; pct: number } | null = null;
+    let maxCellPct = 0;
     const baseline = baselineFrameRef.current;
-    if (baseline && baseline.length === totalSampled) {
-      let diffSum = 0;
-      for (let i = 0; i < totalSampled; i++) {
-        diffSum += Math.abs(currentGrayscale[i] - baseline[i]);
+
+    if (baseline && baseline.length === totalPixels) {
+      let globalDiffSum = 0;
+
+      // Grid-based detection: divide zone into GRID_COLS x GRID_ROWS cells
+      const cellW = Math.floor(zoneW / GRID_COLS);
+      const cellH = Math.floor(zoneH / GRID_ROWS);
+      const pixelDiffThreshold = 15; // lowered from 30 for black target with subtle changes
+
+      for (let row = 0; row < GRID_ROWS; row++) {
+        for (let col = 0; col < GRID_COLS; col++) {
+          const cellStartX = col * cellW;
+          const cellStartY = row * cellH;
+          let cellChangedPixels = 0;
+          const cellTotalPixels = cellW * cellH;
+
+          for (let cy = 0; cy < cellH; cy++) {
+            for (let cx = 0; cx < cellW; cx++) {
+              const idx = (cellStartY + cy) * zoneW + (cellStartX + cx);
+              const diff = Math.abs(currentGrayscale[idx] - baseline[idx]);
+              globalDiffSum += diff;
+              if (diff > pixelDiffThreshold) {
+                cellChangedPixels++;
+              }
+            }
+          }
+
+          const cellPct = cellChangedPixels / cellTotalPixels;
+          if (cellPct > maxCellPct) maxCellPct = cellPct;
+
+          // If any single cell exceeds the cell threshold, we have a localized trigger
+          if (cellPct > GRID_CELL_THRESHOLD) {
+            if (!cellTriggered || cellPct > cellTriggered.pct) {
+              cellTriggered = { col, row, pct: cellPct };
+            }
+          }
+        }
       }
-      baselineMotion = diffSum / (totalSampled * 255);
+
+      baselineMotion = globalDiffSum / (totalPixels * 255);
+
+      // Debug view: render difference image to debug canvas
+      if (debugViewRef.current && debugCanvasRef.current) {
+        const debugCtx = debugCanvasRef.current.getContext('2d');
+        if (debugCtx) {
+          debugCanvasRef.current.width = zoneW;
+          debugCanvasRef.current.height = zoneH;
+          const debugImageData = debugCtx.createImageData(zoneW, zoneH);
+          for (let i = 0; i < totalPixels; i++) {
+            const diff = Math.abs(currentGrayscale[i] - baseline[i]);
+            // Amplify difference for visibility (multiply by 4, cap at 255)
+            const amplified = Math.min(diff * 4, 255);
+            const pixIdx = i * 4;
+            // Show differences as green on black (changed pixels bright green)
+            debugImageData.data[pixIdx] = 0;
+            debugImageData.data[pixIdx + 1] = amplified;
+            debugImageData.data[pixIdx + 2] = 0;
+            debugImageData.data[pixIdx + 3] = 255;
+          }
+          debugCtx.putImageData(debugImageData, 0, 0);
+        }
+      }
+
+      if (cellTriggered) {
+        console.log(
+          `[ReplayCamera] Cell trigger: col=${cellTriggered.col}, row=${cellTriggered.row}, ` +
+          `${(cellTriggered.pct * 100).toFixed(1)}% changed (threshold: ${(GRID_CELL_THRESHOLD * 100).toFixed(0)}%)`
+        );
+      }
     }
 
     // Update rolling motion window
@@ -449,6 +533,18 @@ export default function ReplayCamera() {
       setBaselineAge(baselineAgeRef.current);
     }
 
+    // --- Periodic logging (every 1 second) ---
+    if (now - lastLogTimeRef.current >= LOG_INTERVAL_MS) {
+      lastLogTimeRef.current = now;
+      const currentState = detectionStateRef.current;
+      console.log(
+        `[ReplayCamera] [${currentState}] global: ${(baselineMotion * 100).toFixed(2)}% | ` +
+        `maxCell: ${(maxCellPct * 100).toFixed(1)}% | f2f: ${(frameToFrameMotion * 100).toFixed(2)}% | ` +
+        `prevF2F: ${(prevFrameToFrameMotionRef.current * 100).toFixed(2)}% | ` +
+        `rolling: ${(rollingAvg * 100).toFixed(2)}% | baseline age: ${Math.floor(baselineAgeRef.current / 1000)}s`
+      );
+    }
+
     // --- State machine logic ---
     const currentState = detectionStateRef.current;
 
@@ -465,6 +561,8 @@ export default function ReplayCamera() {
           detectionStateRef.current = 'WATCHING';
           setDetectionState('WATCHING');
           stableStartTimeRef.current = null;
+          setTriggeredCell(null);
+          prevFrameToFrameMotionRef.current = 0;
           console.log('[ReplayCamera] State: STABILIZING → WATCHING (baseline set)');
         }
       } else {
@@ -477,8 +575,9 @@ export default function ReplayCamera() {
         detectionStateRef.current = 'STABILIZING';
         setDetectionState('STABILIZING');
         stableStartTimeRef.current = null;
+        setTriggeredCell(null);
         console.log('[ReplayCamera] State: WATCHING → STABILIZING (shake detected)');
-        // Store current frame for next comparison
+        prevFrameToFrameMotionRef.current = frameToFrameMotion;
         prevFrameDataRef.current = currentGrayscale;
         return;
       }
@@ -491,24 +590,69 @@ export default function ReplayCamera() {
         setBaselineAge(0);
       }
 
-      // Check for impact: sudden spike in baseline comparison while frame-to-frame was low
-      // The key: baseline motion exceeds sensitivity AND the rolling average was low (scene was still)
+      // Check for impact using TRIPLE trigger strategy:
+      // 1. Global: baseline motion exceeds sensitivity threshold (catches large changes)
+      // 2. Grid cell: ANY single cell has >10% changed pixels (catches thin objects like arrows)
+      // 3. Frame-to-frame spike: sudden jump from <0.5% to >2% (catches target vibration on impact)
       if (
         isListeningRef.current &&
         !isRecordingClipRef.current &&
-        baselineMotion > sensitivityRef.current &&
         rollingAvg < SHAKE_THRESHOLD
       ) {
-        // Additional check: the frame-to-frame motion for THIS frame should be notable
-        // (distinguishes "arrow appeared" from gradual drift)
-        if (frameToFrameMotion > sensitivityRef.current * 0.3) {
+        const globalTrigger = baselineMotion > sensitivityRef.current;
+        const cellTrigger = cellTriggered !== null;
+
+        // NEW: Frame-to-frame spike detection
+        // If previous f2f was very low (still scene) and current f2f suddenly jumps high → impact vibration
+        const spikeTrigger = (
+          prevFrameToFrameMotionRef.current < SPIKE_LOW_THRESHOLD &&
+          frameToFrameMotion > SPIKE_HIGH_THRESHOLD
+        );
+
+        if (spikeTrigger) {
+          console.log(
+            `[ReplayCamera] TRIGGER via frame-to-frame SPIKE: ` +
+            `prev=${(prevFrameToFrameMotionRef.current * 100).toFixed(2)}% → ` +
+            `curr=${(frameToFrameMotion * 100).toFixed(2)}% (threshold: ${(SPIKE_HIGH_THRESHOLD * 100).toFixed(1)}%)`
+          );
           triggerImpact();
+          prevFrameToFrameMotionRef.current = frameToFrameMotion;
           prevFrameDataRef.current = currentGrayscale;
           return;
+        }
+
+        if (globalTrigger || cellTrigger) {
+          // Additional check: the frame-to-frame motion for THIS frame should be notable
+          // (distinguishes "arrow appeared" from gradual drift)
+          // Use a very low threshold for cell triggers since arrows are thin
+          const f2fThreshold = cellTrigger
+            ? sensitivityRef.current * 0.1  // Very low for cell-based (arrow) triggers
+            : sensitivityRef.current * 0.3; // Normal for global triggers
+
+          if (frameToFrameMotion > f2fThreshold) {
+            if (cellTrigger && cellTriggered) {
+              setTriggeredCell(cellTriggered);
+              console.log(
+                `[ReplayCamera] TRIGGER via grid cell [${cellTriggered.col},${cellTriggered.row}] ` +
+                `at ${(cellTriggered.pct * 100).toFixed(1)}% | global: ${(baselineMotion * 100).toFixed(2)}%`
+              );
+            } else {
+              console.log(
+                `[ReplayCamera] TRIGGER via global threshold: ${(baselineMotion * 100).toFixed(2)}% > ${(sensitivityRef.current * 100).toFixed(2)}%`
+              );
+            }
+            triggerImpact();
+            prevFrameToFrameMotionRef.current = frameToFrameMotion;
+            prevFrameDataRef.current = currentGrayscale;
+            return;
+          }
         }
       }
     }
     // TRIGGERED state: do nothing, wait for clip to finish
+
+    // Track previous frame-to-frame motion for spike detection
+    prevFrameToFrameMotionRef.current = frameToFrameMotion;
 
     // Store current frame for next comparison
     prevFrameDataRef.current = currentGrayscale;
@@ -569,7 +713,8 @@ export default function ReplayCamera() {
     });
 
     const totalChunks = chunksRef.current.length;
-    const clipChunks = chunksRef.current.slice(-6);
+    // Use last 7 chunks (~7s of video: 3s pre + 4s post)
+    const clipChunks = chunksRef.current.slice(-7);
 
     console.log('[ReplayCamera] Clip generation:', {
       totalChunksInBuffer: totalChunks,
@@ -745,6 +890,7 @@ export default function ReplayCamera() {
     setDetectionState('STABILIZING');
     baselineAgeRef.current = 0;
     setBaselineAge(0);
+    setTriggeredCell(null);
 
     // Restart recording if stream is still active
     if (streamRef.current && streamRef.current.active) {
@@ -826,10 +972,11 @@ export default function ReplayCamera() {
   };
 
   const getSensitivityLabel = () => {
-    if (sensitivity < 0.015) return 'Ultra';
-    if (sensitivity < 0.025) return 'High';
-    if (sensitivity < 0.05) return 'Medium';
-    if (sensitivity < 0.10) return 'Low';
+    if (sensitivity < 0.005) return 'Ultra';
+    if (sensitivity < 0.01) return 'Very High';
+    if (sensitivity < 0.02) return 'High';
+    if (sensitivity < 0.04) return 'Medium';
+    if (sensitivity < 0.07) return 'Low';
     return 'Very Low';
   };
 
@@ -1025,7 +1172,7 @@ export default function ReplayCamera() {
                   )}
                 </div>
 
-                {/* Detection zone indicator (dynamic based on zoneSize) */}
+                {/* Detection zone indicator with grid overlay */}
                 {detectionState !== 'WARMUP' && (
                   <div className="absolute inset-0 pointer-events-none">
                     <div
@@ -1040,31 +1187,86 @@ export default function ReplayCamera() {
                         width: `${zoneSize * 100}%`,
                         height: `${zoneSize * 100}%`,
                       }}
-                    />
+                    >
+                      {/* Grid lines inside detection zone */}
+                      {detectionState === 'WATCHING' && (
+                        <div className="absolute inset-0 grid opacity-20" style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`, gridTemplateRows: `repeat(${GRID_ROWS}, 1fr)` }}>
+                          {Array.from({ length: GRID_COLS * GRID_ROWS }).map((_, i) => {
+                            const col = i % GRID_COLS;
+                            const row = Math.floor(i / GRID_COLS);
+                            const isTriggeredCell = triggeredCell && triggeredCell.col === col && triggeredCell.row === row;
+                            return (
+                              <div
+                                key={i}
+                                className={`border border-emerald-400/30 ${isTriggeredCell ? '!bg-red-500/40 !border-red-400' : ''}`}
+                              />
+                            );
+                          })}
+                        </div>
+                      )}
+                      {/* Show triggered cell highlight */}
+                      {triggeredCell && detectionState === 'TRIGGERED' && (
+                        <div className="absolute inset-0 grid" style={{ gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`, gridTemplateRows: `repeat(${GRID_ROWS}, 1fr)` }}>
+                          {Array.from({ length: GRID_COLS * GRID_ROWS }).map((_, i) => {
+                            const col = i % GRID_COLS;
+                            const row = Math.floor(i / GRID_COLS);
+                            const isTriggeredCell = triggeredCell.col === col && triggeredCell.row === row;
+                            return (
+                              <div
+                                key={i}
+                                className={`border border-transparent ${isTriggeredCell ? 'bg-red-500/50 border-red-400 animate-pulse' : ''}`}
+                              />
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
-                {/* Motion level meter */}
-                {detectionState !== 'WARMUP' && (
-                  <div className="absolute bottom-3 left-3 right-3 flex items-center gap-2">
-                    <Eye className="h-4 w-4 text-white/70" />
-                    <div className="flex-1 h-2 bg-white/20 rounded-full overflow-hidden relative">
-                      {/* Threshold marker */}
-                      <div
-                        className="absolute top-0 bottom-0 w-0.5 bg-white/50 z-10"
-                        style={{ left: `${Math.min(sensitivity * 1000, 100)}%` }}
-                      />
-                      <div
-                        className={`h-full rounded-full transition-all duration-100 ${
-                          currentMotionLevel > sensitivity ? 'bg-red-400' :
-                          detectionState === 'WATCHING' ? 'bg-emerald-400' : 'bg-amber-400'
-                        }`}
-                        style={{ width: `${Math.min(currentMotionLevel * 1000, 100)}%` }}
-                      />
+                {/* Debug View PiP overlay */}
+                {debugView && detectionState !== 'WARMUP' && (
+                  <div className="absolute bottom-14 right-3 z-30 border border-emerald-400/60 rounded overflow-hidden shadow-lg">
+                    <canvas
+                      ref={debugCanvasRef}
+                      className="w-[120px] h-[90px] bg-black"
+                      style={{ imageRendering: 'pixelated' }}
+                    />
+                    <div className="absolute top-0 left-0 bg-black/70 px-1 text-[9px] text-emerald-300 font-mono">
+                      DIFF VIEW
                     </div>
-                    <span className="text-white/50 text-xs min-w-[3rem] text-right">
-                      {(currentMotionLevel * 100).toFixed(1)}%
-                    </span>
+                  </div>
+                )}
+
+                {/* Motion level meter with cell trigger indicator */}
+                {detectionState !== 'WARMUP' && (
+                  <div className="absolute bottom-3 left-3 right-3">
+                    <div className="flex items-center gap-2">
+                      <Eye className="h-4 w-4 text-white/70" />
+                      <div className="flex-1 h-2 bg-white/20 rounded-full overflow-hidden relative">
+                        {/* Threshold marker */}
+                        <div
+                          className="absolute top-0 bottom-0 w-0.5 bg-white/50 z-10"
+                          style={{ left: `${Math.min(sensitivity * 1000, 100)}%` }}
+                        />
+                        <div
+                          className={`h-full rounded-full transition-all duration-100 ${
+                            currentMotionLevel > sensitivity ? 'bg-red-400' :
+                            detectionState === 'WATCHING' ? 'bg-emerald-400' : 'bg-amber-400'
+                          }`}
+                          style={{ width: `${Math.min(currentMotionLevel * 1000, 100)}%` }}
+                        />
+                      </div>
+                      <span className="text-white/50 text-xs min-w-[3rem] text-right">
+                        {(currentMotionLevel * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                    {/* Cell trigger indicator */}
+                    {triggeredCell && (
+                      <div className="mt-1 text-xs text-red-300 bg-black/50 px-2 py-0.5 rounded inline-block">
+                        Cell [{triggeredCell.col},{triggeredCell.row}] triggered ({(triggeredCell.pct * 100).toFixed(0)}%)
+                      </div>
+                    )}
                   </div>
                 )}
               </>
@@ -1121,16 +1323,16 @@ export default function ReplayCamera() {
               </div>
               <input
                 type="range"
-                min="0.005"
-                max="0.15"
-                step="0.005"
+                min="0.003"
+                max="0.10"
+                step="0.001"
                 value={sensitivity}
                 onChange={(e) => setSensitivity(parseFloat(e.target.value))}
                 className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
               />
               <div className="flex justify-between text-xs text-slate-500 mt-1">
-                <span>More Sensitive (0.5%)</span>
-                <span>Less Sensitive (15%)</span>
+                <span>Lower = more sensitive (0.3%)</span>
+                <span>Higher = less sensitive (10%)</span>
               </div>
             </div>
 
@@ -1160,8 +1362,29 @@ export default function ReplayCamera() {
               </div>
             </div>
 
+            {/* Debug View Toggle */}
+            <div className="mb-4 pt-3 border-t border-slate-700/50">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-slate-300 flex items-center gap-2">
+                  <Eye className="h-4 w-4 text-purple-400" />
+                  Debug View
+                </label>
+                <Button
+                  size="sm"
+                  variant={debugView ? 'default' : 'outline'}
+                  onClick={() => setDebugView(!debugView)}
+                  className={`text-xs h-7 ${debugView ? 'bg-purple-500 hover:bg-purple-600 text-white' : 'border-slate-600 text-slate-400 hover:text-white'}`}
+                >
+                  {debugView ? 'ON' : 'OFF'}
+                </Button>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Shows what the detection system &quot;sees&quot; — green pixels = change from baseline. Use to verify camera alignment with target.
+              </p>
+            </div>
+
             <p className="text-xs text-slate-500">
-              Compares current frame to a stable baseline. Triggers only when scene was still and a sudden change appears (arrow impact). Camera shake is filtered out automatically. Baseline refreshes every 3s to handle gradual light changes.
+              <strong>Triple detection:</strong> Triggers on global motion, localized cell change ({GRID_COLS}×{GRID_ROWS} grid, {Math.round(GRID_CELL_THRESHOLD * 100)}% threshold), OR frame-to-frame spike (sudden motion jump from stillness). Pixel threshold: {15} brightness units. Optimized for close-range (2ft) black target with white center.
             </p>
             {/* Detection state info */}
             <div className="flex items-center gap-3 mt-3 pt-3 border-t border-slate-700/50">
@@ -1169,7 +1392,7 @@ export default function ReplayCamera() {
               <span className="text-xs text-slate-400">
                 {detectionState === 'WARMUP' && `Camera warming up (${warmupCountdown}s) — auto-exposure settling...`}
                 {detectionState === 'STABILIZING' && 'Waiting for camera to stabilize (hold still ~3s)...'}
-                {detectionState === 'WATCHING' && 'Baseline set — watching for arrow impact'}
+                {detectionState === 'WATCHING' && 'Baseline set — watching for arrow impact (grid + global)'}
                 {detectionState === 'TRIGGERED' && 'Impact detected — recording clip...'}
               </span>
             </div>
@@ -1185,12 +1408,15 @@ export default function ReplayCamera() {
               <li>Camera warms up for 5 seconds (auto-exposure/focus settling)</li>
               <li>Point camera at the target and hold still — the system will stabilize (~3s)</li>
               <li>Once stable (green &quot;Watching&quot;), any sudden change (arrow impact) triggers a clip</li>
+              <li>Triple detection: grid cells ({GRID_COLS}×{GRID_ROWS}), global motion, AND frame-to-frame spike</li>
+              <li>Optimized for close range (2ft tripod) — black target with white center</li>
+              <li>Enable &quot;Debug View&quot; to see what the camera detects (green = change from baseline)</li>
               <li>Camera shake is automatically filtered — only sudden impacts from stillness trigger</li>
               <li>Sign in and select tournament/archer to auto-upload clips</li>
               <li>Target number auto-advances after each successful save</li>
             </ol>
             <p className="text-slate-500 text-xs mt-3">
-              Tip: Mount the camera on a tripod for best results. Use &quot;Detection Zone&quot; to focus on just the target face. The system requests high frame rate (up to 120fps) for smoother replays. Use &quot;Capture Now&quot; as a manual backup.
+              Tip: Mount the camera on a tripod ~2ft from target. Use &quot;Detection Zone&quot; to focus on just the target face. Enable Debug View to verify alignment. The system requests high frame rate (up to 120fps) for smoother replays. Use &quot;Capture Now&quot; as a manual backup. Check browser console for detailed motion logs every second.
             </p>
           </div>
         )}
