@@ -29,6 +29,21 @@ class UpdateShootingOrderModeRequest(BaseModel):
     shooting_order_mode: str
 
 
+# ---------- Authenticated Routes (placed before path params to avoid conflicts) ----------
+@router.get("/my-groups")
+async def get_my_groups(
+    current_user: UserInfo = Depends(get_current_custom_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all groups the current user belongs to across all tournaments"""
+    service = GroupOpsService(db)
+    try:
+        return await service.get_my_groups(user_id=str(current_user.id))
+    except Exception as e:
+        logger.error(f"Error fetching user groups: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ---------- Public Routes (no auth) ----------
 @router.get("/tournament/{tournament_id}")
 async def get_tournament_groups(

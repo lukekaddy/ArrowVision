@@ -94,6 +94,10 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 
 - [x] Add download button for arrow replay video on SmartScore page
 - [x] Add Forgot Password UI flow (placeholder, no email service)
+- [x] Add GET /api/v1/groups/my-groups endpoint for fetching all user's groups across tournaments
+- [x] Rewrite MyGroup.tsx with expandable group cards, shooting order, mode management, leave group
+- [x] Add GET /api/v1/groups/my-groups endpoint for fetching all user's groups across tournaments
+- [x] Rewrite MyGroup.tsx with expandable group cards, shooting order, mode management, leave group
 
 ## Progress Log
 - Backend tables created: tournaments, tournament_archers, scores
