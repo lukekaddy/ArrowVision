@@ -104,7 +104,7 @@ export default function TournamentEdit() {
   const fetchTournament = async () => {
     if (!id) return;
     try {
-      const res = await client.entities.tournaments.get(id);
+      const res = await client.entities.tournaments.get(Number(id));
       const data = res?.data;
       if (!data) {
         navigate('/', { replace: true });
@@ -314,7 +314,7 @@ export default function TournamentEdit() {
     setSaving(true);
     try {
       const mulliganConfig = buildMulliganConfig();
-      await client.entities.tournaments.update(id, {
+      await client.entities.tournaments.update(Number(id), {
         data: {
           name,
           date,
