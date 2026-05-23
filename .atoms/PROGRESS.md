@@ -96,8 +96,10 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 - [x] Add Forgot Password UI flow (placeholder, no email service)
 - [x] Add GET /api/v1/groups/my-groups endpoint for fetching all user's groups across tournaments
 - [x] Rewrite MyGroup.tsx with expandable group cards, shooting order, mode management, leave group
-- [x] Add GET /api/v1/groups/my-groups endpoint for fetching all user's groups across tournaments
-- [x] Rewrite MyGroup.tsx with expandable group cards, shooting order, mode management, leave group
+- [x] Add POST /api/v1/groups/join endpoint with validation (registration check, duplicate group check, group existence)
+- [x] Redesign ArcherRegister.tsx with 3 group options: Shoot Solo, Join Existing Group, Create New Group
+- [x] Join Existing Group sub-flow: searchable group list with members, size, shooting order mode
+- [x] Create New Group sub-flow: preserved from original with group name + member selection
 
 ## Progress Log
 - Backend tables created: tournaments, tournament_archers, scores

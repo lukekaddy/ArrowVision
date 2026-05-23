@@ -135,6 +135,60 @@ class GroupOpsService:
 
         return result
 
+    async def join_group(
+        self,
+        tournament_id: int,
+        group_id: int,
+        user_id: str,
+    ) -> Dict[str, Any]:
+        """Join an existing group in a tournament."""
+        # Validate user is registered for the tournament
+        reg_query = select(Tournament_archers).where(
+            Tournament_archers.tournament_id == tournament_id,
+            Tournament_archers.user_id == user_id,
+        )
+        reg_result = await self.db.execute(reg_query)
+        registration = reg_result.scalar_one_or_none()
+
+        if not registration:
+            return {"success": False, "message": "Not registered for this tournament"}
+
+        # Validate user is not already in a group
+        if registration.group_number is not None:
+            return {"success": False, "message": "Already in a group for this tournament"}
+
+        # Validate the target group exists
+        group_query = select(Archer_groups).where(
+            Archer_groups.id == group_id,
+            Archer_groups.tournament_id == tournament_id,
+        )
+        group_result = await self.db.execute(group_query)
+        group = group_result.scalar_one_or_none()
+
+        if not group:
+            return {"success": False, "message": "Group not found"}
+
+        # Update the user's registration with the group info
+        registration.group_number = group.group_number
+        registration.group_name = group.group_name
+
+        await self.db.commit()
+        await self.db.refresh(registration)
+
+        # Get all members of the group
+        members_query = select(Tournament_archers).where(
+            Tournament_archers.tournament_id == tournament_id,
+            Tournament_archers.group_number == group.group_number,
+        ).order_by(Tournament_archers.id)
+        members_result = await self.db.execute(members_query)
+        members = members_result.scalars().all()
+
+        return {
+            "success": True,
+            "group": self._group_to_dict(group),
+            "members": [self._archer_to_dict(m) for m in members],
+        }
+
     async def get_tournament_groups(self, tournament_id: int) -> List[Dict[str, Any]]:
         """Get all groups for a tournament with their members."""
         groups_query = select(Archer_groups).where(

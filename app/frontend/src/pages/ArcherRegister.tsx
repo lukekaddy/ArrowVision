@@ -4,7 +4,7 @@ import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, ArrowLeft, Loader2, Users, Search } from 'lucide-react';
+import { CheckCircle, ArrowLeft, Loader2, Users, Search, UserPlus, User } from 'lucide-react';
 
 interface TournamentDetail {
   id: number;
@@ -33,6 +33,27 @@ interface UngroupedArcher {
   user_id?: string;
 }
 
+interface GroupMember {
+  id: number;
+  first_name: string;
+  last_name: string;
+  archer_name?: string;
+}
+
+interface GroupInfo {
+  group: {
+    id: number;
+    tournament_id: number;
+    group_name: string;
+    group_number: number;
+    shooting_order_mode: string;
+    creator_id: string;
+  };
+  members: GroupMember[];
+}
+
+type GroupOption = 'solo' | 'join' | 'create';
+
 export default function ArcherRegister() {
   const { id } = useParams<{ id: string }>();
   const { user, token } = useAuth();
@@ -51,13 +72,20 @@ export default function ArcherRegister() {
   const [purchasedMulligans, setPurchasedMulligans] = useState<Record<string, number>>({});
 
   // Group state
-  const [startGroup, setStartGroup] = useState(false);
+  const [groupOption, setGroupOption] = useState<GroupOption>('solo');
   const [groupName, setGroupName] = useState('');
   const [selectedMembers, setSelectedMembers] = useState<number[]>([]);
   const [ungroupedArchers, setUngroupedArchers] = useState<UngroupedArcher[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loadingArchers, setLoadingArchers] = useState(false);
   const [groupCreated, setGroupCreated] = useState(false);
+
+  // Join group state
+  const [existingGroups, setExistingGroups] = useState<GroupInfo[]>([]);
+  const [loadingGroups, setLoadingGroups] = useState(false);
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
+  const [groupSearchQuery, setGroupSearchQuery] = useState('');
+  const [joinedGroup, setJoinedGroup] = useState(false);
 
   useEffect(() => {
     const fetchTournament = async () => {
@@ -83,9 +111,32 @@ export default function ArcherRegister() {
     fetchTournament();
   }, [id]);
 
-  // Fetch ungrouped archers when startGroup is toggled on
+  // Fetch existing groups when "join" option is selected
   useEffect(() => {
-    if (!startGroup || !id || !token) return;
+    if (groupOption !== 'join' || !id) return;
+
+    const fetchGroups = async () => {
+      setLoadingGroups(true);
+      try {
+        const res = await client.apiCall.invoke({
+          url: `/api/v1/groups/tournament/${id}`,
+          method: 'GET',
+          data: {},
+        });
+        const groups = res?.data?.items || res?.data || [];
+        setExistingGroups(groups);
+      } catch {
+        setExistingGroups([]);
+      } finally {
+        setLoadingGroups(false);
+      }
+    };
+    fetchGroups();
+  }, [groupOption, id]);
+
+  // Fetch ungrouped archers when "create" option is selected
+  useEffect(() => {
+    if (groupOption !== 'create' || !id || !token) return;
 
     const fetchUngrouped = async () => {
       setLoadingArchers(true);
@@ -101,14 +152,13 @@ export default function ArcherRegister() {
         const archers = res?.data?.items || res?.data || [];
         setUngroupedArchers(archers);
       } catch {
-        // Silently fail - archers list may be empty
         setUngroupedArchers([]);
       } finally {
         setLoadingArchers(false);
       }
     };
     fetchUngrouped();
-  }, [startGroup, id, token]);
+  }, [groupOption, id, token]);
 
   const divisions = tournament?.divisions?.split(',').map((d) => d.trim()) || [];
 
@@ -134,6 +184,16 @@ export default function ArcherRegister() {
     if (!searchQuery.trim()) return true;
     const fullName = `${archer.first_name} ${archer.last_name}`.toLowerCase();
     return fullName.includes(searchQuery.toLowerCase());
+  });
+
+  const filteredGroups = existingGroups.filter((g) => {
+    if (!groupSearchQuery.trim()) return true;
+    const query = groupSearchQuery.toLowerCase();
+    const nameMatch = g.group.group_name?.toLowerCase().includes(query);
+    const memberMatch = g.members.some(
+      (m) => `${m.first_name} ${m.last_name}`.toLowerCase().includes(query)
+    );
+    return nameMatch || memberMatch;
   });
 
   const toggleMember = (archerId: number) => {
@@ -172,8 +232,25 @@ export default function ArcherRegister() {
         },
       });
 
-      // Create group if enabled and members selected
-      if (startGroup && selectedMembers.length > 0) {
+      // Handle group actions after registration
+      if (groupOption === 'join' && selectedGroupId !== null) {
+        try {
+          await client.apiCall.invoke({
+            url: '/api/v1/groups/join',
+            method: 'POST',
+            data: {
+              tournament_id: tournament.id,
+              group_id: selectedGroupId,
+            },
+            options: {
+              headers: { Authorization: `Bearer ${token}` },
+            },
+          });
+          setJoinedGroup(true);
+        } catch {
+          // Join failed but registration succeeded
+        }
+      } else if (groupOption === 'create' && selectedMembers.length > 0) {
         try {
           await client.apiCall.invoke({
             url: '/api/v1/groups/create',
@@ -191,7 +268,6 @@ export default function ArcherRegister() {
           setGroupCreated(true);
         } catch {
           // Group creation failed but registration succeeded
-          // We still show success but note the group issue
         }
       }
 
@@ -243,10 +319,18 @@ export default function ArcherRegister() {
             Division: {division} • {tournament.date}
           </p>
           {groupCreated && (
-            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 mb-6 inline-block">
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 mb-4 inline-block">
               <p className="text-emerald-400 text-sm flex items-center gap-2">
                 <Users className="h-4 w-4" />
                 Group created with {selectedMembers.length} member{selectedMembers.length !== 1 ? 's' : ''}!
+              </p>
+            </div>
+          )}
+          {joinedGroup && (
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 mb-4 inline-block">
+              <p className="text-emerald-400 text-sm flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Successfully joined group!
               </p>
             </div>
           )}
@@ -285,6 +369,7 @@ export default function ArcherRegister() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Basic Info Section */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-1.5">First Name *</label>
@@ -367,30 +452,156 @@ export default function ArcherRegister() {
             </div>
           )}
 
-          {/* Start a Group Section */}
+          {/* Group Selection Section */}
           <div className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Users className="h-5 w-5 text-emerald-400" />
-                <h3 className="text-sm font-semibold text-white">Start a Group</h3>
-              </div>
+            <div className="flex items-center gap-2 mb-4">
+              <Users className="h-5 w-5 text-emerald-400" />
+              <h3 className="text-sm font-semibold text-white">Shooting Group</h3>
+            </div>
+
+            {/* 3 Option Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
               <button
                 type="button"
-                onClick={() => setStartGroup(!startGroup)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  startGroup ? 'bg-emerald-500' : 'bg-slate-600'
+                onClick={() => {
+                  setGroupOption('solo');
+                  setSelectedGroupId(null);
+                  setSelectedMembers([]);
+                }}
+                className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${
+                  groupOption === 'solo'
+                    ? 'border-emerald-500 bg-emerald-500/10'
+                    : 'border-slate-600 bg-slate-800/50 hover:border-slate-500'
                 }`}
               >
-                <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    startGroup ? 'translate-x-6' : 'translate-x-1'
-                  }`}
-                />
+                <User className={`h-6 w-6 ${groupOption === 'solo' ? 'text-emerald-400' : 'text-slate-400'}`} />
+                <span className={`text-sm font-medium ${groupOption === 'solo' ? 'text-emerald-400' : 'text-slate-300'}`}>
+                  Shoot Solo
+                </span>
+                <span className="text-xs text-slate-500 text-center">Register individually</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setGroupOption('join');
+                  setSelectedMembers([]);
+                }}
+                className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${
+                  groupOption === 'join'
+                    ? 'border-emerald-500 bg-emerald-500/10'
+                    : 'border-slate-600 bg-slate-800/50 hover:border-slate-500'
+                }`}
+              >
+                <Users className={`h-6 w-6 ${groupOption === 'join' ? 'text-emerald-400' : 'text-slate-400'}`} />
+                <span className={`text-sm font-medium ${groupOption === 'join' ? 'text-emerald-400' : 'text-slate-300'}`}>
+                  Join Group
+                </span>
+                <span className="text-xs text-slate-500 text-center">Join an existing group</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setGroupOption('create');
+                  setSelectedGroupId(null);
+                }}
+                className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${
+                  groupOption === 'create'
+                    ? 'border-emerald-500 bg-emerald-500/10'
+                    : 'border-slate-600 bg-slate-800/50 hover:border-slate-500'
+                }`}
+              >
+                <UserPlus className={`h-6 w-6 ${groupOption === 'create' ? 'text-emerald-400' : 'text-slate-400'}`} />
+                <span className={`text-sm font-medium ${groupOption === 'create' ? 'text-emerald-400' : 'text-slate-300'}`}>
+                  Create Group
+                </span>
+                <span className="text-xs text-slate-500 text-center">Start a new group</span>
               </button>
             </div>
 
-            {startGroup && (
-              <div className="space-y-3 mt-3 pt-3 border-t border-slate-700/50">
+            {/* Join Existing Group Sub-flow */}
+            {groupOption === 'join' && (
+              <div className="space-y-3 pt-3 border-t border-slate-700/50">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                  <input
+                    type="text"
+                    value={groupSearchQuery}
+                    onChange={(e) => setGroupSearchQuery(e.target.value)}
+                    className="w-full h-10 pl-9 pr-3 rounded-lg border border-slate-600 bg-slate-800 text-white placeholder-slate-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-colors text-sm"
+                    placeholder="Search groups by name or member..."
+                  />
+                </div>
+
+                {loadingGroups ? (
+                  <div className="flex items-center justify-center py-6">
+                    <Loader2 className="h-5 w-5 text-emerald-400 animate-spin" />
+                    <span className="text-slate-400 text-sm ml-2">Loading groups...</span>
+                  </div>
+                ) : filteredGroups.length === 0 ? (
+                  <p className="text-slate-500 text-sm py-4 text-center">
+                    {existingGroups.length === 0
+                      ? 'No groups available for this tournament yet.'
+                      : 'No groups match your search.'}
+                  </p>
+                ) : (
+                  <div className="max-h-64 overflow-y-auto space-y-2">
+                    {filteredGroups.map((g) => (
+                      <button
+                        key={g.group.id}
+                        type="button"
+                        onClick={() => setSelectedGroupId(g.group.id)}
+                        className={`w-full text-left p-3 rounded-lg border-2 transition-all ${
+                          selectedGroupId === g.group.id
+                            ? 'border-emerald-500 bg-emerald-500/10'
+                            : 'border-slate-700/50 bg-slate-800/50 hover:border-slate-500'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-semibold text-white">
+                            {g.group.group_name}
+                          </span>
+                          <span className="text-xs text-slate-400 bg-slate-700/50 px-2 py-0.5 rounded">
+                            #{g.group.group_number}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-slate-400">
+                          <span className="flex items-center gap-1">
+                            <Users className="h-3 w-3" />
+                            {g.members.length} member{g.members.length !== 1 ? 's' : ''}
+                          </span>
+                          <span className="capitalize">{g.group.shooting_order_mode.replace('_', ' ')}</span>
+                        </div>
+                        {g.members.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {g.members.slice(0, 4).map((m) => (
+                              <span key={m.id} className="text-xs bg-slate-700/50 text-slate-300 px-1.5 py-0.5 rounded">
+                                {m.first_name} {m.last_name}
+                              </span>
+                            ))}
+                            {g.members.length > 4 && (
+                              <span className="text-xs text-slate-500">+{g.members.length - 4} more</span>
+                            )}
+                          </div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {selectedGroupId && (
+                  <p className="text-emerald-400 text-xs flex items-center gap-1">
+                    <CheckCircle className="h-3 w-3" />
+                    Group selected — will join after registration
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Create New Group Sub-flow */}
+            {groupOption === 'create' && (
+              <div className="space-y-3 pt-3 border-t border-slate-700/50">
                 <div>
                   <label className="block text-xs font-medium text-slate-400 mb-1">Group Name (optional)</label>
                   <input

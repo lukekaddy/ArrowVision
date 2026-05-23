@@ -21,6 +21,11 @@ class CreateGroupRequest(BaseModel):
     shooting_order_mode: str = "round_robin"
 
 
+class JoinGroupRequest(BaseModel):
+    tournament_id: int
+    group_id: int
+
+
 class LeaveGroupRequest(BaseModel):
     tournament_id: int
 
@@ -112,6 +117,31 @@ async def create_group(
         )
     except Exception as e:
         logger.error(f"Error creating group: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/join")
+async def join_group(
+    data: JoinGroupRequest,
+    current_user: UserInfo = Depends(get_current_custom_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Join an existing group in a tournament (authenticated)"""
+    service = GroupOpsService(db)
+    try:
+        result = await service.join_group(
+            tournament_id=data.tournament_id,
+            group_id=data.group_id,
+            user_id=str(current_user.id),
+        )
+        if not result.get("success"):
+            status_code = 404 if result.get("message") == "Group not found" else 400
+            raise HTTPException(status_code=status_code, detail=result.get("message", "Failed to join group"))
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error joining group: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
