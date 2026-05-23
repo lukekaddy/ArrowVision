@@ -50,16 +50,27 @@ interface MyTournamentEntry {
 
 type TournamentStatus = 'active' | 'upcoming' | 'completed';
 
+function parseLocalDate(dateStr: string): Date {
+  // Parse date string as local date to avoid UTC timezone shift.
+  // "2026-05-22" parsed with new Date() is treated as UTC midnight,
+  // which shifts to the previous day in western timezones.
+  // Appending T00:00:00 forces local time interpretation.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return new Date(dateStr + 'T00:00:00');
+  }
+  return new Date(dateStr);
+}
+
 function getTournamentStatus(entry: MyTournamentEntry): TournamentStatus {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const startDate = new Date(entry.tournament.date);
+  const startDate = parseLocalDate(entry.tournament.date);
   startDate.setHours(0, 0, 0, 0);
 
   const endDate = entry.tournament.end_date
-    ? new Date(entry.tournament.end_date)
-    : new Date(entry.tournament.date);
+    ? parseLocalDate(entry.tournament.end_date)
+    : parseLocalDate(entry.tournament.date);
   endDate.setHours(23, 59, 59, 999);
 
   if (today >= startDate && today <= endDate) return 'active';
@@ -68,7 +79,7 @@ function getTournamentStatus(entry: MyTournamentEntry): TournamentStatus {
 }
 
 function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
+  const date = parseLocalDate(dateStr);
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -79,7 +90,7 @@ function formatDate(dateStr: string): string {
 function getDaysUntil(dateStr: string): number {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const target = new Date(dateStr);
+  const target = parseLocalDate(dateStr);
   target.setHours(0, 0, 0, 0);
   return Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
