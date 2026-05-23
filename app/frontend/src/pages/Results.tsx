@@ -135,13 +135,14 @@ export default function Results() {
     if (!archerScores[archerName] && selectedTournament) {
       setLoadingScores(archerName);
       try {
+        const params = new URLSearchParams({
+          tournament_id: selectedTournament.id.toString(),
+          archer_name: archerName,
+        });
         const res = await client.apiCall.invoke({
-          url: `/api/v1/tournament/scores`,
+          url: `/api/v1/tournament/scores?${params.toString()}`,
           method: 'GET',
-          data: {
-            tournament_id: selectedTournament.id.toString(),
-            archer_name: archerName,
-          },
+          data: {},
         });
         const scores = res?.data?.items || res?.data || [];
         setArcherScores((prev) => ({ ...prev, [archerName]: scores }));

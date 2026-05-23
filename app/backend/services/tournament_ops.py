@@ -219,6 +219,39 @@ class TournamentOpsService:
         scores = result.scalars().all()
         return [self._score_to_dict(s) for s in scores]
 
+    async def get_tournament_scores_filtered(self, tournament_id: int, archer_name: Optional[str] = None) -> List[Dict]:
+        """Get scores for a tournament, optionally filtered by archer name"""
+        if archer_name:
+            # Find the archer(s) matching the name in this tournament
+            archer_query = select(Tournament_archers).where(
+                Tournament_archers.tournament_id == tournament_id,
+                Tournament_archers.archer_name == archer_name,
+            )
+            archer_result = await self.db.execute(archer_query)
+            archers = archer_result.scalars().all()
+            if not archers:
+                return []
+            archer_ids = [a.id for a in archers]
+            score_query = select(Scores).where(
+                Scores.tournament_id == tournament_id,
+                Scores.archer_id.in_(archer_ids),
+            ).order_by(Scores.target_number)
+        else:
+            score_query = select(Scores).where(
+                Scores.tournament_id == tournament_id
+            ).order_by(Scores.target_number, Scores.archer_id)
+
+        result = await self.db.execute(score_query)
+        scores = result.scalars().all()
+        # Enrich with target_number and score for the frontend
+        score_dicts = []
+        for s in scores:
+            d = self._score_to_dict(s)
+            # Frontend expects "score" field for display
+            d["score"] = d["score_value"]
+            score_dicts.append(d)
+        return score_dicts
+
     async def update_score(self, score_id: int, data: Dict[str, Any]) -> Optional[Dict]:
         """Update a score (organizer)"""
         query = select(Scores).where(Scores.id == score_id)

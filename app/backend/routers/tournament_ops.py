@@ -240,6 +240,22 @@ async def submit_score(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/scores")
+async def get_scores_by_query(
+    tournament_id: int = Query(...),
+    archer_name: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get scores for a tournament, optionally filtered by archer name (public)"""
+    service = TournamentOpsService(db)
+    try:
+        scores = await service.get_tournament_scores_filtered(tournament_id, archer_name=archer_name)
+        return {"items": scores}
+    except Exception as e:
+        logger.error(f"Error fetching scores: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/scores/{tournament_id}")
 async def get_tournament_scores(
     tournament_id: int,
