@@ -179,37 +179,57 @@ export default function Index() {
             {activeTournaments.map((t) => {
               const courses = parseCourses(t.courses);
               return (
-                <Link
+                <div
                   key={t.id}
-                  to={user ? `/dashboard/${t.id}` : '/leaderboard'}
-                  className="group rounded-xl border border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10 hover:border-emerald-500/50 transition-all p-5"
+                  className="group rounded-xl border border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10 hover:border-emerald-500/50 transition-all p-5 relative isolate"
                 >
-                  <div className="flex items-start justify-between mb-3">
-                    <h3 className="text-lg font-semibold text-white group-hover:text-emerald-400 transition-colors">
-                      {t.name}
-                    </h3>
-                    <span className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  <Link
+                    to={user ? `/dashboard/${t.id}` : '/leaderboard'}
+                    className="block"
+                  >
+                    <div className={`flex items-start justify-between mb-3 ${user ? 'pr-20' : ''}`}>
+                      <h3 className="text-lg font-semibold text-white group-hover:text-emerald-400 transition-colors">
+                        {t.name}
+                      </h3>
+                      <span className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        Live
                       </span>
-                      Live
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-400">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="h-3.5 w-3.5" /> {formatDateRange(t.date, t.end_date)}
-                    </span>
-                    {t.location && (
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-400">
                       <span className="flex items-center gap-1">
-                        <MapPin className="h-3.5 w-3.5 text-emerald-400/70" /> {t.location}
+                        <Calendar className="h-3.5 w-3.5" /> {formatDateRange(t.date, t.end_date)}
                       </span>
-                    )}
-                    {courses.length > 0 && (
-                      <span>{courses.length} course{courses.length > 1 ? 's' : ''}</span>
-                    )}
-                  </div>
-                </Link>
+                      {t.location && (
+                        <span className="flex items-center gap-1">
+                          <MapPin className="h-3.5 w-3.5 text-emerald-400/70" /> {t.location}
+                        </span>
+                      )}
+                      {courses.length > 0 && (
+                        <span>{courses.length} course{courses.length > 1 ? 's' : ''}</span>
+                      )}
+                    </div>
+                  </Link>
+                  {user && (
+                    <div className="absolute top-4 right-4 z-20 flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        className="h-8 w-8 flex items-center justify-center rounded-lg bg-slate-700/80 border border-slate-600/50 text-slate-400 hover:text-emerald-400 hover:border-emerald-500/50 hover:bg-emerald-500/10 transition-all"
+                        title="Edit Tournament"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          navigate(`/edit-tournament/${t.id}`);
+                        }}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -314,10 +334,12 @@ export default function Index() {
                           e.preventDefault();
                           e.stopPropagation();
                           if (window.confirm(`Are you sure you want to delete "${t.name}"? This action cannot be undone.`)) {
+                            const storedToken = localStorage.getItem('arrowlive_token');
                             client.apiCall.invoke({
                               url: `/api/v1/tournament/delete/${t.id}`,
                               method: 'DELETE',
                               data: {},
+                              ...(storedToken ? { options: { headers: { Authorization: `Bearer ${storedToken}` } } } : {}),
                             }).then(() => {
                               setTournaments((prev) => prev.filter((tour) => tour.id !== t.id));
                             }).catch(() => {
