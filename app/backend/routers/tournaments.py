@@ -24,7 +24,6 @@ class TournamentsData(BaseModel):
     """Entity data schema (for create/update)"""
     name: str
     date: str = None
-    end_date: str = None
     num_targets: int = None
     divisions: str = None
     status: str = None
@@ -39,7 +38,6 @@ class TournamentsUpdateData(BaseModel):
     """Update entity data (partial updates allowed)"""
     name: Optional[str] = None
     date: Optional[str] = None
-    end_date: Optional[str] = None
     num_targets: Optional[int] = None
     divisions: Optional[str] = None
     status: Optional[str] = None
@@ -56,7 +54,6 @@ class TournamentsResponse(BaseModel):
     user_id: str
     name: str
     date: Optional[str] = None
-    end_date: Optional[str] = None
     num_targets: Optional[int] = None
     divisions: Optional[str] = None
     status: Optional[str] = None
