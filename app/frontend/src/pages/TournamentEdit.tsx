@@ -118,8 +118,8 @@ export default function TournamentEdit() {
         return;
       }
 
-      // Check if tournament is upcoming (start_date > today)
-      const tournamentDate = data.date || data.start_date || '';
+      // Parse date field - backend returns parsed start_date/end_date from pipe format
+      const tournamentDate = data.date || '';
       const tournamentEndDate = data.end_date || tournamentDate;
       const today = getTodayString();
       if (tournamentDate <= today) {
@@ -330,13 +330,16 @@ export default function TournamentEdit() {
     setSaving(true);
     try {
       const mulliganConfig = buildMulliganConfig();
+      // Encode multi-day as "startDate|endDate" in the date field
+      const dateValue = isMultiDay && endDate && endDate !== date
+        ? `${date}|${endDate}`
+        : date;
       await client.apiCall.invoke({
         url: `/api/v1/tournament/update/${id}`,
         method: 'PUT',
         data: {
           name,
-          date,
-          end_date: isMultiDay && endDate ? endDate : date,
+          date: dateValue,
           location: location || undefined,
           num_targets: totalTargets,
           divisions: selectedDivisions.join(','),

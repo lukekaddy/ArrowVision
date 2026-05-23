@@ -11,7 +11,6 @@ class Tournaments(Base):
     user_id = Column(String, nullable=False)
     name = Column(String, nullable=False)
     date = Column(String, nullable=True)
-    end_date = Column(String, nullable=True)
     num_targets = Column(Integer, nullable=True)
     divisions = Column(String, nullable=True)
     status = Column(String, nullable=True)

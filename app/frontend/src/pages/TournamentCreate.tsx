@@ -193,11 +193,14 @@ export default function TournamentCreate() {
     setSaving(true);
     try {
       const mulliganConfig = buildMulliganConfig();
+      // Encode multi-day as "startDate|endDate" in the date field
+      const dateValue = isMultiDay && endDate && endDate !== date
+        ? `${date}|${endDate}`
+        : date;
       const res = await client.entities.tournaments.create({
         data: {
           name,
-          date,
-          end_date: isMultiDay && endDate ? endDate : date,
+          date: dateValue,
           location: location || undefined,
           num_targets: totalTargets,
           divisions: selectedDivisions.join(','),

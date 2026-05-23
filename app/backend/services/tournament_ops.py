@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 # We use raw SQL for tournament queries to avoid SQLAlchemy including
 # columns that may not exist in the actual database schema.
 _TOURNAMENT_SAFE_COLS = [
-    "id", "user_id", "name", "date", "end_date", "num_targets",
+    "id", "user_id", "name", "date", "num_targets",
     "divisions", "status", "courses", "mulligans",
     "scoring_template_id", "course_map_url",
     "created_at", "updated_at"
@@ -72,7 +72,7 @@ class TournamentOpsService:
         tournament_list = []
         for row in rows:
             t_dict = self._row_to_dict(dict(row))
-            t_dict["status"] = self._compute_status(t_dict.get("date"), t_dict.get("end_date"))
+            t_dict["status"] = self._compute_status(t_dict.get("date"))
             tournament_list.append(t_dict)
 
         return {
@@ -246,12 +246,20 @@ class TournamentOpsService:
             "scores": scores,
         }
 
-    def _compute_status(self, date_str: str, end_date_str: str = None) -> str:
-        """Compute tournament status based on date range comparison to today.
-        If end_date is provided, the tournament is active for the entire range."""
+    def _compute_status(self, date_str: str) -> str:
+        """Compute tournament status based on date field.
+        The date field may contain a pipe-separated range: 'start|end'.
+        If no pipe, it's a single-day tournament (end = start)."""
         try:
-            start_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date() if end_date_str else start_date
+            if not date_str:
+                return "unknown"
+            if "|" in date_str:
+                parts = date_str.split("|")
+                start_date = datetime.strptime(parts[0], "%Y-%m-%d").date()
+                end_date = datetime.strptime(parts[1], "%Y-%m-%d").date()
+            else:
+                start_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+                end_date = start_date
             today = date_type.today()
             if today >= start_date and today <= end_date:
                 return "active"
@@ -263,15 +271,25 @@ class TournamentOpsService:
             return "unknown"
 
     def _row_to_dict(self, row: Dict) -> Dict:
-        """Convert a raw SQL row dict to a tournament response dict"""
+        """Convert a raw SQL row dict to a tournament response dict.
+        The date field may contain 'start|end' for multi-day tournaments.
+        We expose both 'date' (raw) and parsed 'start_date'/'end_date' for convenience."""
         created_at = row.get("created_at")
         updated_at = row.get("updated_at")
+        date_raw = row.get("date") or ""
+        if "|" in date_raw:
+            parts = date_raw.split("|")
+            start_date = parts[0]
+            end_date = parts[1]
+        else:
+            start_date = date_raw
+            end_date = date_raw
         return {
             "id": row.get("id"),
             "user_id": row.get("user_id"),
             "name": row.get("name"),
-            "date": row.get("date"),
-            "end_date": row.get("end_date"),
+            "date": start_date,
+            "end_date": end_date,
             "location": row.get("location", ""),
             "num_targets": row.get("num_targets"),
             "divisions": row.get("divisions"),
@@ -285,13 +303,22 @@ class TournamentOpsService:
         }
 
     def _tournament_to_dict(self, t: Tournaments) -> Dict:
-        """Convert an ORM Tournament object to dict (used by non-raw queries)"""
+        """Convert an ORM Tournament object to dict (used by non-raw queries).
+        The date field may contain 'start|end' for multi-day tournaments."""
+        date_raw = t.date or ""
+        if "|" in date_raw:
+            parts = date_raw.split("|")
+            start_date = parts[0]
+            end_date = parts[1]
+        else:
+            start_date = date_raw
+            end_date = date_raw
         return {
             "id": t.id,
             "user_id": t.user_id,
             "name": t.name,
-            "date": t.date,
-            "end_date": getattr(t, "end_date", None),
+            "date": start_date,
+            "end_date": end_date,
             "location": getattr(t, "location", None) or "",
             "num_targets": t.num_targets,
             "divisions": t.divisions,
@@ -358,7 +385,9 @@ class TournamentOpsService:
                 continue
 
             tournament_dict = self._row_to_dict(dict(t_row))
-            tournament_dict["status"] = self._compute_status(tournament_dict.get("date"), tournament_dict.get("end_date"))
+            # _compute_status needs the raw date field (with pipe separator if multi-day)
+            raw_date = dict(t_row).get("date") or ""
+            tournament_dict["status"] = self._compute_status(raw_date)
 
             # Get score summary for this archer in this tournament
             score_query = select(
@@ -464,7 +493,7 @@ class TournamentOpsService:
     async def update_tournament(self, tournament_id: int, data: Dict[str, Any], user_id: str) -> Optional[Dict]:
         """Update a tournament owned by the user"""
         has_location = await self._check_location_column()
-        allowed_fields = ["name", "date", "end_date", "num_targets", "divisions", "status", "courses", "mulligans", "scoring_template_id", "course_map_url"]
+        allowed_fields = ["name", "date", "num_targets", "divisions", "status", "courses", "mulligans", "scoring_template_id", "course_map_url"]
         if has_location:
             allowed_fields.append("location")
         set_parts = []
