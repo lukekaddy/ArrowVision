@@ -14,8 +14,9 @@ logger = logging.getLogger(__name__)
 # We use raw SQL for tournament queries to avoid SQLAlchemy including
 # columns that may not exist in the actual database schema.
 _TOURNAMENT_SAFE_COLS = [
-    "id", "user_id", "name", "date", "num_targets",
+    "id", "user_id", "name", "date", "end_date", "num_targets",
     "divisions", "status", "courses", "mulligans",
+    "scoring_template_id", "course_map_url",
     "created_at", "updated_at"
 ]
 
@@ -71,7 +72,7 @@ class TournamentOpsService:
         tournament_list = []
         for row in rows:
             t_dict = self._row_to_dict(dict(row))
-            t_dict["status"] = self._compute_status(t_dict.get("date"))
+            t_dict["status"] = self._compute_status(t_dict.get("date"), t_dict.get("end_date"))
             tournament_list.append(t_dict)
 
         return {
@@ -245,14 +246,16 @@ class TournamentOpsService:
             "scores": scores,
         }
 
-    def _compute_status(self, date_str: str) -> str:
-        """Compute tournament status based on date comparison to today"""
+    def _compute_status(self, date_str: str, end_date_str: str = None) -> str:
+        """Compute tournament status based on date range comparison to today.
+        If end_date is provided, the tournament is active for the entire range."""
         try:
-            tournament_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            start_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d").date() if end_date_str else start_date
             today = date_type.today()
-            if tournament_date == today:
+            if today >= start_date and today <= end_date:
                 return "active"
-            elif tournament_date > today:
+            elif today < start_date:
                 return "upcoming"
             else:
                 return "completed"
@@ -268,11 +271,14 @@ class TournamentOpsService:
             "user_id": row.get("user_id"),
             "name": row.get("name"),
             "date": row.get("date"),
+            "end_date": row.get("end_date"),
             "location": row.get("location", ""),
             "num_targets": row.get("num_targets"),
             "divisions": row.get("divisions"),
             "courses": row.get("courses"),
             "mulligans": row.get("mulligans"),
+            "scoring_template_id": row.get("scoring_template_id"),
+            "course_map_url": row.get("course_map_url"),
             "status": row.get("status"),
             "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else str(created_at) if created_at else None,
             "updated_at": updated_at.isoformat() if hasattr(updated_at, "isoformat") else str(updated_at) if updated_at else None,
@@ -285,11 +291,14 @@ class TournamentOpsService:
             "user_id": t.user_id,
             "name": t.name,
             "date": t.date,
+            "end_date": getattr(t, "end_date", None),
             "location": getattr(t, "location", None) or "",
             "num_targets": t.num_targets,
             "divisions": t.divisions,
             "courses": t.courses,
             "mulligans": t.mulligans,
+            "scoring_template_id": getattr(t, "scoring_template_id", None),
+            "course_map_url": getattr(t, "course_map_url", None),
             "status": t.status,
             "created_at": t.created_at.isoformat() if t.created_at else None,
             "updated_at": t.updated_at.isoformat() if t.updated_at else None,
@@ -349,7 +358,7 @@ class TournamentOpsService:
                 continue
 
             tournament_dict = self._row_to_dict(dict(t_row))
-            tournament_dict["status"] = self._compute_status(tournament_dict.get("date"))
+            tournament_dict["status"] = self._compute_status(tournament_dict.get("date"), tournament_dict.get("end_date"))
 
             # Get score summary for this archer in this tournament
             score_query = select(
@@ -455,7 +464,7 @@ class TournamentOpsService:
     async def update_tournament(self, tournament_id: int, data: Dict[str, Any], user_id: str) -> Optional[Dict]:
         """Update a tournament owned by the user"""
         has_location = await self._check_location_column()
-        allowed_fields = ["name", "date", "num_targets", "divisions", "status", "courses", "mulligans"]
+        allowed_fields = ["name", "date", "end_date", "num_targets", "divisions", "status", "courses", "mulligans", "scoring_template_id", "course_map_url"]
         if has_location:
             allowed_fields.append("location")
         set_parts = []

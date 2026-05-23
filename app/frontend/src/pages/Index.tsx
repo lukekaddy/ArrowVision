@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Trophy, ClipboardList, BarChart3, Calendar, MapPin, Zap, Pencil, Trash2 } from 'lucide-react';
+import { getTournamentStatus, formatDateRange } from '@/lib/dateUtils';
 
 const HERO_URL = 'https://mgx-backend-cdn.metadl.com/generate/images/1230028/2026-05-14/orhcm3yaagpa/hero-archery-sunset.png';
 
@@ -17,6 +18,7 @@ interface Tournament {
   id: number;
   name: string;
   date: string;
+  end_date?: string;
   status: string;
   location?: string;
   divisions?: string;
@@ -24,11 +26,8 @@ interface Tournament {
   courses?: string;
 }
 
-function inferStatus(dateStr: string): string {
-  const today = new Date().toISOString().split('T')[0];
-  if (dateStr === today) return 'active';
-  if (dateStr > today) return 'upcoming';
-  return 'completed';
+function inferStatus(t: Tournament): string {
+  return getTournamentStatus(t.date, t.end_date);
 }
 
 function getStatusStyle(status: string) {
@@ -87,18 +86,17 @@ export default function Index() {
     fetchTournaments();
   }, []);
 
-  const today = new Date().toISOString().split('T')[0];
   const upcomingTournaments = tournaments.filter((t) => {
-    const status = t.status === 'auto' ? inferStatus(t.date) : t.status;
+    const status = t.status === 'auto' ? inferStatus(t) : t.status;
     return status === 'upcoming' || status === 'active';
   });
   const activeTournaments = tournaments.filter((t) => {
-    const status = t.status === 'auto' ? inferStatus(t.date) : t.status;
+    const status = t.status === 'auto' ? inferStatus(t) : t.status;
     return status === 'active';
   });
   const recentTournaments = tournaments
     .filter((t) => {
-      const status = t.status === 'auto' ? inferStatus(t.date) : t.status;
+      const status = t.status === 'auto' ? inferStatus(t) : t.status;
       return status === 'completed';
     })
     .slice(0, 3);
@@ -200,7 +198,7 @@ export default function Index() {
                   </div>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-400">
                     <span className="flex items-center gap-1">
-                      <Calendar className="h-3.5 w-3.5" /> {t.date}
+                      <Calendar className="h-3.5 w-3.5" /> {formatDateRange(t.date, t.end_date)}
                     </span>
                     {t.location && (
                       <span className="flex items-center gap-1">
@@ -246,7 +244,7 @@ export default function Index() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {upcomingTournaments.map((t) => {
               const courses = parseCourses(t.courses);
-              const status = t.status === 'auto' ? inferStatus(t.date) : t.status;
+              const status = t.status === 'auto' ? inferStatus(t) : t.status;
               const isUpcoming = status === 'upcoming';
               return (
                 <div
@@ -273,7 +271,7 @@ export default function Index() {
                     </div>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-400">
                       <span className="flex items-center gap-1">
-                        <Calendar className="h-3.5 w-3.5" /> {t.date}
+                        <Calendar className="h-3.5 w-3.5" /> {formatDateRange(t.date, t.end_date)}
                       </span>
                       {t.location && (
                         <span className="flex items-center gap-1">
@@ -356,7 +354,7 @@ export default function Index() {
                 <div>
                   <h3 className="text-white font-medium">{t.name}</h3>
                   <p className="text-sm text-slate-400 flex items-center gap-2 mt-0.5">
-                    <Calendar className="h-3.5 w-3.5" /> {t.date}
+                    <Calendar className="h-3.5 w-3.5" /> {formatDateRange(t.date, t.end_date)}
                     {t.location && (
                       <span className="flex items-center gap-1">
                         <MapPin className="h-3.5 w-3.5" /> {t.location}

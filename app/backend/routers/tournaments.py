@@ -24,24 +24,30 @@ class TournamentsData(BaseModel):
     """Entity data schema (for create/update)"""
     name: str
     date: str = None
-    location: str = None
+    end_date: str = None
     num_targets: int = None
     divisions: str = None
     status: str = None
     courses: str = None
     mulligans: str = None
+    location: str = None
+    scoring_template_id: int = None
+    course_map_url: str = None
 
 
 class TournamentsUpdateData(BaseModel):
     """Update entity data (partial updates allowed)"""
     name: Optional[str] = None
     date: Optional[str] = None
-    location: Optional[str] = None
+    end_date: Optional[str] = None
     num_targets: Optional[int] = None
     divisions: Optional[str] = None
     status: Optional[str] = None
     courses: Optional[str] = None
     mulligans: Optional[str] = None
+    location: Optional[str] = None
+    scoring_template_id: Optional[int] = None
+    course_map_url: Optional[str] = None
 
 
 class TournamentsResponse(BaseModel):
@@ -50,12 +56,15 @@ class TournamentsResponse(BaseModel):
     user_id: str
     name: str
     date: Optional[str] = None
-    location: Optional[str] = None
+    end_date: Optional[str] = None
     num_targets: Optional[int] = None
     divisions: Optional[str] = None
     status: Optional[str] = None
     courses: Optional[str] = None
     mulligans: Optional[str] = None
+    location: Optional[str] = None
+    scoring_template_id: Optional[int] = None
+    course_map_url: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

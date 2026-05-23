@@ -16,11 +16,11 @@
         },
         "date": {
             "type": "string",
-            "description": "Tournament date"
+            "description": "Tournament start date"
         },
-        "location": {
+        "end_date": {
             "type": "string",
-            "description": "Tournament location"
+            "description": "Tournament end date, same as date for single-day events"
         },
         "num_targets": {
             "type": "integer",
@@ -28,7 +28,7 @@
         },
         "divisions": {
             "type": "string",
-            "description": "Comma-separated divisions"
+            "description": "Divisions configuration"
         },
         "status": {
             "type": "string",
@@ -36,11 +36,23 @@
         },
         "courses": {
             "type": "string",
-            "description": "JSON string of courses config"
+            "description": "Courses JSON configuration"
         },
         "mulligans": {
             "type": "string",
-            "description": "JSON string of mulligans config"
+            "description": "Mulligans JSON configuration"
+        },
+        "location": {
+            "type": "string",
+            "description": "Tournament location"
+        },
+        "scoring_template_id": {
+            "type": "integer",
+            "description": "Scoring template ID reference"
+        },
+        "course_map_url": {
+            "type": "string",
+            "description": "Course map URL"
         }
     },
     "required": [

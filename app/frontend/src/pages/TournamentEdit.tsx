@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Trophy, Plus, X, Check, MapPin, Eye, ExternalLink, Upload, Trash2, Map, AlertTriangle } from 'lucide-react';
+import { Trophy, Plus, X, Check, MapPin, Eye, ExternalLink, Upload, Trash2, Map, AlertTriangle, CalendarDays } from 'lucide-react';
+import { getTodayString, getTournamentStatus } from '@/lib/dateUtils';
 
 const DIVISION_OPTIONS = [
   'Recurve',
@@ -62,6 +63,8 @@ export default function TournamentEdit() {
   const courseMapInputRef = useRef<HTMLInputElement>(null);
   const [location, setLocation] = useState('');
   const [date, setDate] = useState('');
+  const [isMultiDay, setIsMultiDay] = useState(false);
+  const [endDate, setEndDate] = useState('');
   const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
   const [customDivision, setCustomDivision] = useState('');
   const [courses, setCourses] = useState<CourseConfig[]>([{ course: 1, name: '', targets: 10 }]);
@@ -81,8 +84,8 @@ export default function TournamentEdit() {
 
   useEffect(() => {
     if (user && token) {
-      fetchScorecards();
-      fetchTournament();
+      // Load scorecards first, then tournament data so the Select can match the value
+      fetchScorecards().then(() => fetchTournament());
     }
   }, [user, token]);
 
@@ -117,7 +120,8 @@ export default function TournamentEdit() {
 
       // Check if tournament is upcoming (start_date > today)
       const tournamentDate = data.date || data.start_date || '';
-      const today = new Date().toISOString().split('T')[0];
+      const tournamentEndDate = data.end_date || tournamentDate;
+      const today = getTodayString();
       if (tournamentDate <= today) {
         setNotUpcoming(true);
         setLoadingData(false);
@@ -128,6 +132,14 @@ export default function TournamentEdit() {
       setName(data.name || '');
       setLocation(data.location || '');
       setDate(tournamentDate);
+      // Set multi-day state
+      if (tournamentEndDate && tournamentEndDate !== tournamentDate) {
+        setIsMultiDay(true);
+        setEndDate(tournamentEndDate);
+      } else {
+        setIsMultiDay(false);
+        setEndDate(tournamentDate);
+      }
       setCourseMapUrl(data.course_map_url || '');
       if (data.course_map_url) {
         setCourseMapPreview(data.course_map_url);
@@ -324,6 +336,7 @@ export default function TournamentEdit() {
         data: {
           name,
           date,
+          end_date: isMultiDay && endDate ? endDate : date,
           location: location || undefined,
           num_targets: totalTargets,
           divisions: selectedDivisions.join(','),
@@ -379,22 +392,69 @@ export default function TournamentEdit() {
 
           {/* Date */}
           <div>
-            <Label className="text-slate-300 mb-1.5 block">Date</Label>
+            <Label className="text-slate-300 mb-1.5 block">
+              {isMultiDay ? 'Start Date' : 'Date'}
+            </Label>
             <Input
               type="date"
               value={date}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={(e) => {
+                setDate(e.target.value);
+                if (!isMultiDay) setEndDate(e.target.value);
+              }}
               className="bg-slate-800 border-slate-700 text-white"
               required
             />
+
+            {/* Multi-day toggle */}
+            <div className="flex items-center justify-between mt-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
+              <div className="flex items-center gap-2">
+                <CalendarDays className="h-4 w-4 text-emerald-400" />
+                <span className="text-sm text-slate-300">Multi-day tournament</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !isMultiDay;
+                  setIsMultiDay(next);
+                  if (!next) setEndDate(date);
+                }}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  isMultiDay ? 'bg-emerald-500' : 'bg-slate-700'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    isMultiDay ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* End Date (only shown for multi-day) */}
+            {isMultiDay && (
+              <div className="mt-3">
+                <Label className="text-slate-300 mb-1.5 block">End Date</Label>
+                <Input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  min={date}
+                  className="bg-slate-800 border-slate-700 text-white"
+                  required
+                />
+              </div>
+            )}
+
             {date && (
-              <p className="text-xs text-slate-500 mt-1">
+              <p className="text-xs text-slate-500 mt-2">
                 Status will be automatically determined:{' '}
-                {date === new Date().toISOString().split('T')[0]
-                  ? '🟢 Active (today)'
-                  : date > new Date().toISOString().split('T')[0]
-                  ? '🔵 Upcoming'
-                  : '⚪ Completed'}
+                {(() => {
+                  const status = getTournamentStatus(date, isMultiDay ? endDate : date);
+                  if (status === 'active') return '🟢 Active (today is within range)';
+                  if (status === 'upcoming') return '🔵 Upcoming';
+                  return '⚪ Completed';
+                })()}
               </p>
             )}
           </div>
