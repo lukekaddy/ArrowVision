@@ -3,6 +3,7 @@ import Layout from '@/components/Layout';
 import { getClient } from '@/lib/client';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { BarChart3, RefreshCw, Trophy, Medal } from 'lucide-react';
+import { getTournamentStatus } from '@/lib/dateUtils';
 
 interface CourseConfig {
   course: number;
@@ -14,6 +15,7 @@ interface Tournament {
   id: number;
   name: string;
   date: string;
+  end_date?: string;
   divisions?: string;
   courses?: string;
 }
@@ -26,9 +28,8 @@ interface LeaderboardEntry {
   targets_completed: number;
 }
 
-function isActive(dateStr: string): boolean {
-  const today = new Date().toISOString().split('T')[0];
-  return dateStr === today;
+function isActive(t: Tournament): boolean {
+  return getTournamentStatus(t.date, t.end_date) === 'active';
 }
 
 export default function Leaderboard() {
@@ -119,8 +120,8 @@ export default function Leaderboard() {
   };
 
   // Separate active and non-active tournaments
-  const activeTournaments = tournaments.filter((t) => isActive(t.date));
-  const otherTournaments = tournaments.filter((t) => !isActive(t.date));
+  const activeTournaments = tournaments.filter((t) => isActive(t));
+  const otherTournaments = tournaments.filter((t) => !isActive(t));
 
   return (
     <Layout>

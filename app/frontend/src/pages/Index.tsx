@@ -88,7 +88,7 @@ export default function Index() {
 
   const upcomingTournaments = tournaments.filter((t) => {
     const status = t.status === 'auto' ? inferStatus(t) : t.status;
-    return status === 'upcoming' || status === 'active';
+    return status === 'upcoming';
   });
   const activeTournaments = tournaments.filter((t) => {
     const status = t.status === 'auto' ? inferStatus(t) : t.status;
