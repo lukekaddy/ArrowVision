@@ -455,7 +455,7 @@ class TournamentOpsService:
     async def update_tournament(self, tournament_id: int, data: Dict[str, Any], user_id: str) -> Optional[Dict]:
         """Update a tournament owned by the user"""
         has_location = await self._check_location_column()
-        allowed_fields = ["name", "date", "num_targets", "divisions", "status", "courses", "mulligans", "scoring_template_id", "course_map_url"]
+        allowed_fields = ["name", "date", "num_targets", "divisions", "status", "courses", "mulligans"]
         if has_location:
             allowed_fields.append("location")
         set_parts = []
