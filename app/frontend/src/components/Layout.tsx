@@ -24,7 +24,6 @@ const ADMIN_NAV_LINKS: NavLink[] = [
 
 const ARCHER_NAV_LINKS: NavLink[] = [
   { to: '/archer', label: 'Home' },
-  { to: '/archer/my-scorecards', label: 'My Scorecards' },
   { to: '/archer/group', label: 'My Group' },
   { to: '/leaderboard', label: 'Live Leaderboard' },
   { to: '/results', label: 'Results' },
