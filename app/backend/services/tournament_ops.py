@@ -147,6 +147,16 @@ class TournamentOpsService:
 
     async def register_archer(self, data: Dict[str, Any], user_id: str) -> Dict:
         """Register an archer to a tournament"""
+        # Check for duplicate registration
+        existing_query = select(Tournament_archers).where(
+            Tournament_archers.user_id == user_id,
+            Tournament_archers.tournament_id == data["tournament_id"],
+        )
+        existing_result = await self.db.execute(existing_query)
+        existing = existing_result.scalar_one_or_none()
+        if existing:
+            raise ValueError("You are already registered for this tournament")
+
         archer = Tournament_archers(
             user_id=user_id,
             tournament_id=data["tournament_id"],

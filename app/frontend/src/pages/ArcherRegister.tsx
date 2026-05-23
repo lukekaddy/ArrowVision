@@ -64,6 +64,7 @@ export default function ArcherRegister() {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [alreadyRegistered, setAlreadyRegistered] = useState(false);
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -102,6 +103,29 @@ export default function ArcherRegister() {
           const divs = found.divisions?.split(',').map((d: string) => d.trim()) || [];
           if (divs.length > 0) setDivision(divs[0]);
         }
+
+        // Check if user is already registered for this tournament
+        if (token) {
+          try {
+            const myRes = await client.apiCall.invoke({
+              url: '/api/v1/tournament/my-tournaments',
+              method: 'GET',
+              data: {},
+              options: {
+                headers: { Authorization: `Bearer ${token}` },
+              },
+            });
+            const myTournaments = myRes?.data || [];
+            const isRegistered = myTournaments.some(
+              (item: { tournament: { id: number } }) => item.tournament?.id === Number(id)
+            );
+            if (isRegistered) {
+              setAlreadyRegistered(true);
+            }
+          } catch {
+            // If check fails, allow registration attempt (backend will still block duplicates)
+          }
+        }
       } catch {
         setError('Failed to load tournament details.');
       } finally {
@@ -109,7 +133,7 @@ export default function ArcherRegister() {
       }
     };
     fetchTournament();
-  }, [id]);
+  }, [id, token]);
 
   // Fetch existing groups when "join" option is selected
   useEffect(() => {
@@ -273,7 +297,21 @@ export default function ArcherRegister() {
 
       setSuccess(true);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Registration failed. Please try again.';
+      let message = 'Registration failed. Please try again.';
+      if (err instanceof Error) {
+        message = err.message;
+      }
+      // Check for duplicate registration error from backend
+      if (typeof err === 'object' && err !== null && 'response' in err) {
+        const resp = (err as { response?: { data?: { detail?: string } } }).response;
+        if (resp?.data?.detail) {
+          message = resp.data.detail;
+        }
+      }
+      if (message.toLowerCase().includes('already registered')) {
+        setAlreadyRegistered(true);
+        return;
+      }
       setError(message);
     } finally {
       setSubmitting(false);
@@ -301,6 +339,35 @@ export default function ArcherRegister() {
               Back to Home
             </Button>
           </Link>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (alreadyRegistered) {
+    return (
+      <Layout>
+        <div className="max-w-2xl mx-auto px-4 py-16 text-center">
+          <CheckCircle className="h-16 w-16 text-emerald-400 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-white mb-2">Already Registered</h2>
+          <p className="text-slate-300 mb-2">
+            You&apos;re already registered for <span className="text-emerald-400 font-semibold">{tournament?.name}</span>
+          </p>
+          <p className="text-slate-400 text-sm mb-6">
+            You can view your scorecards or check the leaderboard.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link to="/archer">
+              <Button className="bg-emerald-500 hover:bg-emerald-600 text-white gap-2">
+                <ArrowLeft className="h-4 w-4" /> Back to Home
+              </Button>
+            </Link>
+            <Link to="/archer/group">
+              <Button variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700 gap-2">
+                <Users className="h-4 w-4" /> My Group
+              </Button>
+            </Link>
+          </div>
         </div>
       </Layout>
     );

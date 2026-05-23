@@ -218,6 +218,8 @@ async def register_archer(
     service = TournamentOpsService(db)
     try:
         return await service.register_archer(data.model_dump(), user_id=str(current_user.id))
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         logger.error(f"Error registering archer: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

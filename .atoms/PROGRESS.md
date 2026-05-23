@@ -100,6 +100,7 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 - [x] Redesign ArcherRegister.tsx with 3 group options: Shoot Solo, Join Existing Group, Create New Group
 - [x] Join Existing Group sub-flow: searchable group list with members, size, shooting order mode
 - [x] Create New Group sub-flow: preserved from original with group name + member selection
+- [x] Prevent duplicate tournament registration (backend validation + frontend pre-check)
 
 ## Progress Log
 - Backend tables created: tournaments, tournament_archers, scores
