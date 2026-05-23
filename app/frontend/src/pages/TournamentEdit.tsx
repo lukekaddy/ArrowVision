@@ -122,7 +122,9 @@ export default function TournamentEdit() {
       const tournamentDate = data.date || '';
       const tournamentEndDate = data.end_date || tournamentDate;
       const today = getTodayString();
-      if (tournamentDate <= today) {
+      // Only block editing for completed tournaments (end date is in the past)
+      const effectiveEndDate = tournamentEndDate || tournamentDate;
+      if (effectiveEndDate < today) {
         setNotUpcoming(true);
         setLoadingData(false);
         return;
@@ -245,7 +247,7 @@ export default function TournamentEdit() {
         <div className="max-w-md mx-auto px-4 py-20 text-center">
           <AlertTriangle className="h-16 w-16 text-amber-400 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-white mb-3">Cannot Edit Tournament</h2>
-          <p className="text-slate-400 mb-6">Only upcoming tournaments (with a future date) can be edited.</p>
+          <p className="text-slate-400 mb-6">Completed tournaments cannot be edited.</p>
           <Button onClick={() => navigate('/')} className="bg-emerald-500 hover:bg-emerald-600 text-white">
             Back to Home
           </Button>

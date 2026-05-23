@@ -71,8 +71,9 @@ class TournamentOpsService:
 
         tournament_list = []
         for row in rows:
+            raw_date = dict(row).get("date") or ""
             t_dict = self._row_to_dict(dict(row))
-            t_dict["status"] = self._compute_status(t_dict.get("date"))
+            t_dict["status"] = self._compute_status(raw_date)
             tournament_list.append(t_dict)
 
         return {
