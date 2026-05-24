@@ -543,6 +543,58 @@ class TournamentOpsService:
         await self.db.commit()
         return True
 
+    async def create_tournament(self, data: Dict[str, Any], user_id: str) -> Dict:
+        """Create a new tournament via raw SQL to avoid ORM column mismatch"""
+        has_location = await self._check_location_column()
+        has_start_time = await self._check_start_time_column()
+
+        # Build column list and values
+        columns = ["user_id", "name", "date", "num_targets", "divisions", "status", "courses", "mulligans", "scoring_template_id", "course_map_url"]
+        params: Dict[str, Any] = {
+            "user_id": user_id,
+            "name": data["name"],
+            "date": data.get("date", ""),
+            "num_targets": data.get("num_targets"),
+            "divisions": data.get("divisions", ""),
+            "status": data.get("status", "auto"),
+            "courses": data.get("courses"),
+            "mulligans": data.get("mulligans"),
+            "scoring_template_id": data.get("scoring_template_id"),
+            "course_map_url": data.get("course_map_url"),
+        }
+
+        if has_location:
+            columns.append("location")
+            params["location"] = data.get("location", "")
+        if has_start_time:
+            columns.append("start_time")
+            params["start_time"] = data.get("start_time", "")
+
+        # Check for max_group_size column
+        try:
+            check_query = text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'tournaments' AND column_name = 'max_group_size'"
+            )
+            result = await self.db.execute(check_query)
+            if result.scalar_one_or_none():
+                columns.append("max_group_size")
+                params["max_group_size"] = data.get("max_group_size", 4)
+        except Exception:
+            pass
+
+        col_str = ", ".join(columns)
+        val_str = ", ".join(f":{col}" for col in columns)
+
+        query = text(f"INSERT INTO tournaments ({col_str}) VALUES ({val_str}) RETURNING id, created_at")
+        result = await self.db.execute(query, params)
+        row = result.mappings().first()
+        await self.db.commit()
+
+        if row:
+            return {"id": row["id"], "created_at": str(row["created_at"]) if row.get("created_at") else None, **{k: v for k, v in data.items() if v is not None}}
+        raise Exception("Failed to create tournament - no row returned")
+
     async def delete_tournament(self, tournament_id: int, user_id: str) -> bool:
         """Delete a tournament. Skip user_id ownership check due to auth system mismatch
         (entity SDK uses Atoms UUID, custom auth uses integer ID). Auth enforced at router."""

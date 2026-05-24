@@ -55,6 +55,21 @@ class UpdateTournamentRequest(BaseModel):
     course_map_url: Optional[str] = None
 
 
+class CreateTournamentRequest(BaseModel):
+    name: str
+    date: str
+    start_time: Optional[str] = None
+    location: Optional[str] = None
+    num_targets: Optional[int] = None
+    divisions: Optional[str] = None
+    status: Optional[str] = "auto"
+    courses: Optional[str] = None
+    mulligans: Optional[str] = None
+    scoring_template_id: Optional[int] = None
+    course_map_url: Optional[str] = None
+    max_group_size: Optional[int] = 4
+
+
 class SubmitScoreRequest(BaseModel):
     tournament_id: int
     archer_id: int
@@ -138,6 +153,22 @@ async def get_leaderboard(
 
 
 # ---------- Authenticated Routes ----------
+@router.post("/create")
+async def create_tournament(
+    data: CreateTournamentRequest,
+    current_user: UserInfo = Depends(get_current_custom_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new tournament using custom auth"""
+    service = TournamentOpsService(db)
+    try:
+        result = await service.create_tournament(data.model_dump(), user_id=str(current_user.id))
+        return {"id": result["id"], "data": result}
+    except Exception as e:
+        logger.error(f"Error creating tournament: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.delete("/delete/{tournament_id}")
 async def delete_tournament(
     tournament_id: int,

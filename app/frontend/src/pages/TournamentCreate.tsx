@@ -201,21 +201,26 @@ export default function TournamentCreate() {
       const dateValue = isMultiDay && endDate && endDate !== date
         ? `${date}|${endDate}`
         : date;
-      const res = await client.entities.tournaments.create({
-        data: {
-          name,
-          date: dateValue,
-          start_time: startTime || undefined,
-          location: location || undefined,
-          num_targets: totalTargets,
-          divisions: selectedDivisions.join(','),
-          courses: JSON.stringify(courses),
-          mulligans: JSON.stringify(mulliganConfig),
-          scoring_template_id: selectedScorecardId ? parseInt(selectedScorecardId) : undefined,
-          course_map_url: courseMapUrl || undefined,
-          max_group_size: maxGroupSize,
-          status: 'auto',
-        },
+      const payload = {
+        name,
+        date: dateValue,
+        start_time: startTime || undefined,
+        location: location || undefined,
+        num_targets: totalTargets,
+        divisions: selectedDivisions.join(','),
+        courses: JSON.stringify(courses),
+        mulligans: JSON.stringify(mulliganConfig),
+        scoring_template_id: selectedScorecardId ? parseInt(selectedScorecardId) : undefined,
+        course_map_url: courseMapUrl || undefined,
+        max_group_size: maxGroupSize,
+        status: 'auto',
+      };
+      // Use apiCall with explicit token to avoid SDK OIDC auth issues on mobile Safari
+      const res = await client.apiCall.invoke({
+        url: '/api/v1/tournament/create',
+        method: 'POST',
+        data: payload,
+        ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
       });
       const id = res?.data?.id;
       if (id) {
@@ -443,21 +448,28 @@ export default function TournamentCreate() {
                 try {
                   const objectKey = `maps/${Date.now()}-${file.name}`;
                   const bucketName = 'course-maps';
-                  const uploadRes = await client.storage.getUploadUrl({
-                    bucket_name: bucketName,
-                    object_key: objectKey,
+                  // Use replays endpoints which use custom auth (get_current_custom_user)
+                  const uploadRes = await client.apiCall.invoke({
+                    url: '/api/v1/replays/get-upload-url',
+                    method: 'POST',
+                    data: { bucket_name: bucketName, object_key: objectKey },
+                    ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
                   });
-                  const uploadUrl = uploadRes.data.upload_url;
-                  await fetch(uploadUrl, {
-                    method: 'PUT',
-                    body: file,
-                    headers: { 'Content-Type': file.type },
-                  });
-                  const downloadRes = await client.storage.getDownloadUrl({
-                    bucket_name: bucketName,
-                    object_key: objectKey,
-                  });
-                  setCourseMapUrl(downloadRes.data.download_url);
+                  const uploadUrl = uploadRes?.data?.upload_url;
+                  if (uploadUrl) {
+                    await fetch(uploadUrl, {
+                      method: 'PUT',
+                      body: file,
+                      headers: { 'Content-Type': file.type },
+                    });
+                    const downloadRes = await client.apiCall.invoke({
+                      url: '/api/v1/replays/get-download-url',
+                      method: 'POST',
+                      data: { bucket_name: bucketName, object_key: objectKey },
+                      ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
+                    });
+                    setCourseMapUrl(downloadRes?.data?.download_url || '');
+                  }
                 } catch (err) {
                   console.error('Failed to upload course map:', err);
                   setCourseMapPreview('');
