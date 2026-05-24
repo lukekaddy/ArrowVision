@@ -141,7 +141,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={logout}
+                  onClick={() => { logout(); navigate('/landing'); }}
                   className="text-slate-400 hover:text-white hidden md:flex"
                 >
                   <LogOut className="h-4 w-4" />
@@ -206,7 +206,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             )}
             {isAuthenticated && (
               <button
-                onClick={() => { logout(); setMenuOpen(false); }}
+                onClick={() => { logout(); setMenuOpen(false); navigate('/landing'); }}
                 className="block w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-red-400 hover:bg-slate-700/50"
               >
                 Sign Out
