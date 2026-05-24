@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
@@ -68,6 +68,7 @@ type GroupOption = 'find' | 'join_code' | 'create';
 
 export default function ArcherRegister() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const { user, token } = useAuth();
   const client = getClient();
 
@@ -84,8 +85,11 @@ export default function ArcherRegister() {
   const [division, setDivision] = useState('');
   const [purchasedMulligans, setPurchasedMulligans] = useState<Record<string, number>>({});
 
-  // Group state
-  const [groupOption, setGroupOption] = useState<GroupOption>('find');
+  // Group state - initialize from URL ?tab param
+  const initialTab = (['find', 'join_code', 'create'].includes(searchParams.get('tab') || '') 
+    ? searchParams.get('tab') as GroupOption 
+    : 'find');
+  const [groupOption, setGroupOption] = useState<GroupOption>(initialTab);
   const [groupName, setGroupName] = useState('');
   const [groupVisibility, setGroupVisibility] = useState<'public' | 'private'>('public');
   const [selectedMembers, setSelectedMembers] = useState<number[]>([]);
@@ -417,6 +421,74 @@ export default function ArcherRegister() {
     }
   };
 
+  const handleGroupAction = async () => {
+    if (!tournament || !token) return;
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      if (groupOption === 'find' && selectedGroupId !== null) {
+        await client.apiCall.invoke({
+          url: '/api/v1/groups/join',
+          method: 'POST',
+          data: {
+            tournament_id: tournament.id,
+            group_id: selectedGroupId,
+          },
+          options: {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        });
+        setJoinedGroup(true);
+        setSuccess(true);
+      } else if (groupOption === 'join_code' && inviteCode.trim()) {
+        await client.apiCall.invoke({
+          url: '/api/v1/groups/join-by-code',
+          method: 'POST',
+          data: {
+            invite_code: inviteCode.trim().toUpperCase(),
+          },
+          options: {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        });
+        setJoinByCodeSuccess(true);
+        setSuccess(true);
+      } else if (groupOption === 'create' && groupName.trim()) {
+        await client.apiCall.invoke({
+          url: '/api/v1/groups/create',
+          method: 'POST',
+          data: {
+            tournament_id: tournament.id,
+            group_name: groupName.trim(),
+            member_ids: selectedMembers,
+            shooting_order_mode: 'round_robin',
+            visibility: groupVisibility,
+          },
+          options: {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        });
+        setGroupCreated(true);
+        setSuccess(true);
+      }
+    } catch (err: unknown) {
+      let message = 'Group action failed. Please try again.';
+      if (err instanceof Error) {
+        message = err.message;
+      }
+      if (typeof err === 'object' && err !== null && 'response' in err) {
+        const resp = (err as { response?: { data?: { detail?: string } } }).response;
+        if (resp?.data?.detail) {
+          message = resp.data.detail;
+        }
+      }
+      setError(message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <Layout>
@@ -443,34 +515,7 @@ export default function ArcherRegister() {
     );
   }
 
-  if (alreadyRegistered) {
-    return (
-      <Layout>
-        <div className="max-w-2xl mx-auto px-4 py-16 text-center">
-          <CheckCircle className="h-16 w-16 text-emerald-400 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-white mb-2">Already Registered</h2>
-          <p className="text-slate-300 mb-2">
-            You&apos;re already registered for <span className="text-emerald-400 font-semibold">{tournament?.name}</span>
-          </p>
-          <p className="text-slate-400 text-sm mb-6">
-            You can view your scorecards or check the leaderboard.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Link to="/archer">
-              <Button className="bg-emerald-500 hover:bg-emerald-600 text-white gap-2">
-                <ArrowLeft className="h-4 w-4" /> Back to Home
-              </Button>
-            </Link>
-            <Link to="/archer/group">
-              <Button variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700 gap-2">
-                <Users className="h-4 w-4" /> My Group
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
+
 
   if (success) {
     return (
@@ -590,17 +635,30 @@ export default function ArcherRegister() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className={`space-y-5 ${registrationClosed ? 'opacity-50 pointer-events-none' : ''}`}>
+        {alreadyRegistered && (
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 mb-6">
+            <div className="flex items-center gap-3">
+              <CheckCircle className="h-5 w-5 text-emerald-400 flex-shrink-0" />
+              <div>
+                <p className="text-emerald-400 font-semibold text-sm">You&apos;re already registered for this tournament</p>
+                <p className="text-slate-400 text-xs mt-0.5">You can still manage your shooting group below.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className={`space-y-5 ${registrationClosed && !alreadyRegistered ? 'opacity-50 pointer-events-none' : ''}`}>
           {/* Basic Info Section */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${alreadyRegistered ? 'opacity-60' : ''}`}>
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-1.5">First Name *</label>
               <input
                 type="text"
-                required
+                required={!alreadyRegistered}
+                disabled={alreadyRegistered}
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
-                className="w-full h-12 px-4 rounded-lg border border-slate-600 bg-slate-800 text-white placeholder-slate-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-colors"
+                className="w-full h-12 px-4 rounded-lg border border-slate-600 bg-slate-800 text-white placeholder-slate-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-colors disabled:cursor-not-allowed"
                 placeholder="John"
               />
             </div>
@@ -608,22 +666,24 @@ export default function ArcherRegister() {
               <label className="block text-sm font-medium text-slate-300 mb-1.5">Last Name *</label>
               <input
                 type="text"
-                required
+                required={!alreadyRegistered}
+                disabled={alreadyRegistered}
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
-                className="w-full h-12 px-4 rounded-lg border border-slate-600 bg-slate-800 text-white placeholder-slate-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-colors"
+                className="w-full h-12 px-4 rounded-lg border border-slate-600 bg-slate-800 text-white placeholder-slate-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-colors disabled:cursor-not-allowed"
                 placeholder="Doe"
               />
             </div>
           </div>
 
-          <div>
+          <div className={alreadyRegistered ? 'opacity-60' : ''}>
             <label className="block text-sm font-medium text-slate-300 mb-1.5">Phone</label>
             <input
               type="tel"
+              disabled={alreadyRegistered}
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              className="w-full h-12 px-4 rounded-lg border border-slate-600 bg-slate-800 text-white placeholder-slate-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-colors"
+              className="w-full h-12 px-4 rounded-lg border border-slate-600 bg-slate-800 text-white placeholder-slate-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-colors disabled:cursor-not-allowed"
               placeholder="(555) 123-4567"
             />
           </div>
@@ -965,21 +1025,44 @@ export default function ArcherRegister() {
             )}
           </div>
 
-          <Button
-            type="submit"
-            disabled={submitting || !firstName || !lastName || registrationClosed}
-            className="w-full h-12 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {submitting ? (
-              <span className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" /> Registering...
-              </span>
-            ) : registrationClosed ? (
-              'Registration Closed'
-            ) : (
-              'Register Now'
-            )}
-          </Button>
+          {!alreadyRegistered && (
+            <Button
+              type="submit"
+              disabled={submitting || !firstName || !lastName || registrationClosed}
+              className="w-full h-12 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {submitting ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Registering...
+                </span>
+              ) : registrationClosed ? (
+                'Registration Closed'
+              ) : (
+                'Register Now'
+              )}
+            </Button>
+          )}
+
+          {alreadyRegistered && !tournamentStarted && (
+            <Button
+              type="button"
+              disabled={submitting || (groupOption === 'find' && !selectedGroupId) || (groupOption === 'join_code' && inviteCode.length < 6) || (groupOption === 'create' && !groupName.trim())}
+              onClick={handleGroupAction}
+              className="w-full h-12 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {submitting ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Processing...
+                </span>
+              ) : groupOption === 'find' ? (
+                'Join Selected Group'
+              ) : groupOption === 'join_code' ? (
+                'Join Group by Code'
+              ) : (
+                'Create Group'
+              )}
+            </Button>
+          )}
         </form>
       </div>
     </Layout>
