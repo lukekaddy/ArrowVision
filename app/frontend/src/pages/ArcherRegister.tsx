@@ -366,6 +366,7 @@ export default function ArcherRegister() {
               url: '/api/v1/groups/join-by-code',
               method: 'POST',
               data: {
+                tournament_id: tournament.id,
                 invite_code: inviteCode.trim().toUpperCase(),
               },
               options: {
@@ -446,6 +447,7 @@ export default function ArcherRegister() {
           url: '/api/v1/groups/join-by-code',
           method: 'POST',
           data: {
+            tournament_id: tournament.id,
             invite_code: inviteCode.trim().toUpperCase(),
           },
           options: {
