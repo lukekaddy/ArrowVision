@@ -95,10 +95,11 @@ export default function MyGroup() {
       const groupEntries: MyGroupEntry[] = Array.isArray(rawData) ? rawData : [];
       setGroups(groupEntries);
 
-      // Initialize selected modes
+      // Initialize selected modes (normalize round_robin to sequential)
       const modes: Record<number, string> = {};
       groupEntries.forEach((entry) => {
-        modes[entry.group.id] = entry.group.shooting_order_mode || 'round_robin';
+        const raw = entry.group.shooting_order_mode || 'sequential';
+        modes[entry.group.id] = raw === 'round_robin' ? 'sequential' : raw;
       });
       setSelectedModes(modes);
 
@@ -401,7 +402,7 @@ export default function MyGroup() {
                     {/* Group Meta */}
                     <div className="flex flex-wrap gap-3 text-sm mb-5">
                       <span className="px-3 py-1.5 rounded-lg bg-slate-700/50 text-slate-300">
-                        Mode: <span className="text-white font-medium">{group.shooting_order_mode || 'round_robin'}</span>
+                        Mode: <span className="text-white font-medium">{(group.shooting_order_mode === 'round_robin' ? 'Sequential' : group.shooting_order_mode === 'random' ? 'Random' : 'Sequential')}</span>
                       </span>
                       <span className="px-3 py-1.5 rounded-lg bg-slate-700/50 text-slate-300">
                         Members: <span className="text-white font-medium">{members.length}</span>
@@ -498,13 +499,12 @@ export default function MyGroup() {
                             <h3 className="text-sm font-semibold text-amber-400 mb-3">Change Shooting Order Mode</h3>
                             <div className="flex items-center gap-3">
                               <select
-                                value={selectedModes[group.id] || 'round_robin'}
+                                value={selectedModes[group.id] || 'sequential'}
                                 onChange={(e) =>
                                   setSelectedModes((prev) => ({ ...prev, [group.id]: e.target.value }))
                                 }
                                 className="flex-1 h-10 px-3 rounded-lg border border-slate-600 bg-slate-800 text-white text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
                               >
-                                <option value="round_robin">Round Robin</option>
                                 <option value="sequential">Sequential</option>
                                 <option value="random">Random</option>
                               </select>

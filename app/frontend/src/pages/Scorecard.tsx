@@ -10,6 +10,33 @@ import {
   Play, X, ArrowLeft, Users, Crosshair, Loader2
 } from 'lucide-react';
 
+// Seeded pseudo-random number generator for consistent random order across devices
+function seededRandom(seed: number): () => number {
+  let s = seed;
+  return () => {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    return (s >>> 0) / 0xffffffff;
+  };
+}
+
+// Generate a deterministic shooting order for a given target using seeded shuffle
+function getRandomOrderForTarget(
+  members: { archer_id: number }[],
+  targetNumber: number,
+  groupId: number
+): number[] {
+  const ids = members.map(m => m.archer_id);
+  const seed = groupId * 10000 + targetNumber * 7;
+  const rng = seededRandom(seed);
+  // Fisher-Yates shuffle with seeded RNG
+  const shuffled = [...ids];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
 interface CourseConfig {
   course: number;
   name?: string;
@@ -102,8 +129,7 @@ export default function Scorecard() {
   const restoredFromParams = useRef(false);
   const [directModeLoading, setDirectModeLoading] = useState(false);
 
-  // Current shooter index for auto-advance (client-side tracking)
-  const [currentShooterIndex, setCurrentShooterIndex] = useState(0);
+
 
   // Number of target columns visible at once on the scoreboard
   const VISIBLE_TARGETS = 5;
@@ -124,37 +150,7 @@ export default function Scorecard() {
     return `bowling_current_target_${selectedTournament.id}_${courseNum}`;
   }, [selectedTournament, selectedCourse]);
 
-  // Storage key for current shooter index persistence
-  const getShooterIndexKey = useCallback(() => {
-    if (!selectedTournament) return null;
-    const courseNum = selectedCourse?.course || 1;
-    return `bowling_shooter_index_${selectedTournament.id}_${courseNum}`;
-  }, [selectedTournament, selectedCourse]);
 
-  // Save shooter index to localStorage
-  const saveShooterIndex = useCallback((index: number) => {
-    const key = getShooterIndexKey();
-    if (key) {
-      localStorage.setItem(key, index.toString());
-    }
-  }, [getShooterIndexKey]);
-
-  // Load shooter index from localStorage
-  const loadShooterIndex = useCallback(() => {
-    const key = getShooterIndexKey();
-    if (!key) return;
-    try {
-      const stored = localStorage.getItem(key);
-      if (stored) {
-        const val = parseInt(stored);
-        if (!isNaN(val) && val >= 0) {
-          setCurrentShooterIndex(val);
-          return;
-        }
-      }
-    } catch { /* ignore */ }
-    setCurrentShooterIndex(0);
-  }, [getShooterIndexKey]);
 
   // Load all scores for group members from localStorage
   const loadAllScores = useCallback(() => {
@@ -333,20 +329,33 @@ export default function Scorecard() {
     }
   }, [bowlingMode, groupEntry, currentTarget, fetchShootingOrder]);
 
-  // Load current target and shooter index from storage when entering bowling mode
+  // Load current target from storage when entering bowling mode
   useEffect(() => {
     if (bowlingMode) {
       loadCurrentTarget();
-      loadShooterIndex();
     }
-  }, [bowlingMode, loadCurrentTarget, loadShooterIndex]);
+  }, [bowlingMode, loadCurrentTarget]);
 
-  // Auto-advance shooter logic: when scores update, find the correct active shooter and target
+  // Compute the effective shooting order for a given target based on mode
+  const getEffectiveOrder = useCallback((targetNum: number): number[] => {
+    if (!groupEntry || shootingOrder.length === 0) return [];
+    const mode = groupEntry.group?.shooting_order_mode || 'sequential';
+    const normalizedMode = mode === 'round_robin' ? 'sequential' : mode;
+
+    if (normalizedMode === 'random') {
+      // Use seeded random based on group ID + target number for consistency
+      return getRandomOrderForTarget(shootingOrder, targetNum, groupEntry.group.id);
+    }
+    // Sequential: use the order as returned by the API
+    return shootingOrder.map(entry => entry.archer_id);
+  }, [groupEntry, shootingOrder]);
+
+  // Auto-advance target logic: when ALL shooters have scored the current target, advance to next
   useEffect(() => {
     if (!bowlingMode) return;
 
     // Solo mode: no group, just one archer - auto-advance target when scored
-    if (shootingOrder.length === 0) {
+    if (!groupEntry || shootingOrder.length === 0) {
       if (!selectedArcher) return;
       const archerScores = allScores[selectedArcher.id] || {};
       if (archerScores[currentTarget] !== undefined) {
@@ -364,66 +373,28 @@ export default function Scorecard() {
       return;
     }
 
-    // Group mode: scan from current target forward to find the correct state
-    const orderedArcherIds = shootingOrder.map(entry => entry.archer_id);
-    if (orderedArcherIds.length === 0) return;
+    // Group mode: get the effective order for the current target
+    const effectiveOrder = getEffectiveOrder(currentTarget);
+    if (effectiveOrder.length === 0) return;
 
-    // Walk through targets starting from currentTarget to find the first target
-    // where not all shooters have scored, then find the first unscored shooter
-    let targetToCheck = currentTarget;
+    // Check if ALL shooters have scored the current target
+    const allScoredCurrentTarget = effectiveOrder.every(archerId => {
+      const scores = allScores[archerId] || {};
+      return scores[currentTarget] !== undefined;
+    });
 
-    while (targetToCheck <= maxTargets) {
-      // Check if ALL shooters have scored this target
-      let allScored = true;
-      let firstUnscoredIndex = -1;
-
-      for (let i = 0; i < orderedArcherIds.length; i++) {
-        const archerId = orderedArcherIds[i];
-        const archerScores = allScores[archerId] || {};
-        if (archerScores[targetToCheck] === undefined) {
-          allScored = false;
-          if (firstUnscoredIndex === -1) {
-            firstUnscoredIndex = i;
-          }
-        }
+    if (allScoredCurrentTarget && currentTarget < maxTargets) {
+      // All shooters scored current target - advance to next target
+      const nextTarget = currentTarget + 1;
+      setCurrentTarget(nextTarget);
+      saveCurrentTarget(nextTarget);
+      // Auto-scroll visible window
+      if (nextTarget > visibleTargetStart + VISIBLE_TARGETS - 1) {
+        setVisibleTargetStart(Math.min(nextTarget - VISIBLE_TARGETS + 1, maxTargets - VISIBLE_TARGETS + 1));
       }
-
-      if (allScored) {
-        // All shooters scored this target, advance to next target
-        targetToCheck++;
-        continue;
-      }
-
-      // Found a target with unscored shooters - this is where we should be
-      if (targetToCheck !== currentTarget) {
-        setCurrentTarget(targetToCheck);
-        saveCurrentTarget(targetToCheck);
-        // Auto-scroll visible window
-        if (targetToCheck > visibleTargetStart + VISIBLE_TARGETS - 1) {
-          setVisibleTargetStart(Math.min(targetToCheck - VISIBLE_TARGETS + 1, maxTargets - VISIBLE_TARGETS + 1));
-        }
-      }
-
-      // Set the active shooter to the first unscored archer (in shooting order)
-      if (firstUnscoredIndex !== -1 && firstUnscoredIndex !== currentShooterIndex) {
-        setCurrentShooterIndex(firstUnscoredIndex);
-        saveShooterIndex(firstUnscoredIndex);
-      } else if (firstUnscoredIndex !== -1 && firstUnscoredIndex === currentShooterIndex) {
-        // Already correct, no update needed
-      }
-      return;
     }
-
-    // If we get here, all targets are fully scored - stay on last target, reset shooter to 0
-    if (currentTarget !== maxTargets) {
-      setCurrentTarget(maxTargets);
-      saveCurrentTarget(maxTargets);
-    }
-    if (currentShooterIndex !== 0) {
-      setCurrentShooterIndex(0);
-      saveShooterIndex(0);
-    }
-  }, [allScores, bowlingMode, shootingOrder, currentShooterIndex, currentTarget, maxTargets, selectedArcher, saveCurrentTarget, saveShooterIndex, visibleTargetStart]);
+    // If NOT all scored, we stay on current target - the activeShooter/nextShooter memo handles display
+  }, [allScores, bowlingMode, shootingOrder, groupEntry, currentTarget, maxTargets, selectedArcher, saveCurrentTarget, visibleTargetStart, getEffectiveOrder]);
 
   // Check replays in bowling mode
   useEffect(() => {
@@ -618,13 +589,45 @@ export default function Scorecard() {
     return Object.keys(scores).length;
   };
 
-  // Determine active shooter and next shooter using client-side currentShooterIndex
-  const activeShooter = shootingOrder.length > 0
-    ? shootingOrder[currentShooterIndex % shootingOrder.length] || shootingOrder[0]
-    : null;
-  const nextShooter = shootingOrder.length > 1
-    ? shootingOrder[(currentShooterIndex + 1) % shootingOrder.length] || shootingOrder[1]
-    : null;
+  // Get the normalized shooting order mode for display
+  const shootingOrderMode = useMemo(() => {
+    const raw = groupEntry?.group?.shooting_order_mode || 'sequential';
+    if (raw === 'round_robin') return 'sequential';
+    if (raw === 'random') return 'random';
+    return 'sequential';
+  }, [groupEntry]);
+
+  // Determine active shooter (first unscored in effective order for current target)
+  // and next shooter (second unscored in effective order for current target)
+  const { activeShooter, nextShooter } = useMemo(() => {
+    if (shootingOrder.length === 0 || !groupEntry) return { activeShooter: null, nextShooter: null };
+
+    // Get the effective order for the current target (respects shooting order mode)
+    const effectiveOrderIds = (() => {
+      const mode = groupEntry.group?.shooting_order_mode || 'sequential';
+      const normalizedMode = mode === 'round_robin' ? 'sequential' : mode;
+      if (normalizedMode === 'random') {
+        return getRandomOrderForTarget(shootingOrder, currentTarget, groupEntry.group.id);
+      }
+      return shootingOrder.map(entry => entry.archer_id);
+    })();
+
+    // Find unscored archers in the effective order
+    const unscoredInOrder: ShootingOrderEntry[] = [];
+    for (const archerId of effectiveOrderIds) {
+      const archerScores = allScores[archerId] || {};
+      if (archerScores[currentTarget] === undefined) {
+        // Find the matching entry from shootingOrder for display info
+        const entry = shootingOrder.find(e => e.archer_id === archerId);
+        if (entry) unscoredInOrder.push(entry);
+      }
+    }
+
+    return {
+      activeShooter: unscoredInOrder.length > 0 ? unscoredInOrder[0] : null,
+      nextShooter: unscoredInOrder.length > 1 ? unscoredInOrder[1] : null,
+    };
+  }, [shootingOrder, allScores, currentTarget, groupEntry]);
 
   // Visible target numbers for the scoreboard grid
   const visibleTargets = Array.from(
@@ -677,11 +680,24 @@ export default function Scorecard() {
                 </div>
               </div>
               {groupEntry && (
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30">
-                  <Users className="h-3.5 w-3.5 text-emerald-400" />
-                  <span className="text-xs font-medium text-emerald-400">
-                    {groupEntry.group.group_name || `Group ${groupEntry.group.group_number}`}
-                  </span>
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30">
+                    <Users className="h-3.5 w-3.5 text-emerald-400" />
+                    <span className="text-xs font-medium text-emerald-400">
+                      {groupEntry.group.group_name || `Group ${groupEntry.group.group_number}`}
+                    </span>
+                  </div>
+                  <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${
+                    shootingOrderMode === 'random'
+                      ? 'bg-amber-500/15 border-amber-500/30'
+                      : 'bg-blue-500/15 border-blue-500/30'
+                  }`}>
+                    <span className={`text-xs font-medium ${
+                      shootingOrderMode === 'random' ? 'text-amber-400' : 'text-blue-400'
+                    }`}>
+                      {shootingOrderMode === 'random' ? '🎲 Random Order' : '📋 Sequential Order'}
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
@@ -729,10 +745,25 @@ export default function Scorecard() {
                     </span>
                   </div>
                 )}
+                {activeShooter && !nextShooter && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-500/10 border border-slate-500/30">
+                    <span className="text-xs font-medium text-slate-400/80">
+                      Last Shooter
+                    </span>
+                  </div>
+                )}
                 {nextShooter && (
                   <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30">
                     <span className="text-xs font-medium text-amber-400/80">
                       Next: {nextShooter.first_name || nextShooter.archer_name}
+                    </span>
+                  </div>
+                )}
+                {!activeShooter && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30">
+                    <CheckCircle className="h-3.5 w-3.5 text-emerald-400" />
+                    <span className="text-xs font-bold text-emerald-300 uppercase tracking-wider">
+                      All Scored!
                     </span>
                   </div>
                 )}

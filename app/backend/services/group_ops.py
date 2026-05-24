@@ -539,42 +539,27 @@ class GroupOpsService:
         if not members:
             return {"shooting_order_mode": group.shooting_order_mode, "order": []}
 
-        mode = group.shooting_order_mode or "round_robin"
+        mode = group.shooting_order_mode or "sequential"
+        # Normalize legacy "round_robin" to "sequential"
+        if mode == "round_robin":
+            mode = "sequential"
         ordered_members = []
 
-        if mode == "round_robin":
-            # Fixed rotation: offset by (target_number - 1) positions
-            offset = (target_number - 1) % len(members)
-            ordered_members = members[offset:] + members[:offset]
+        if mode == "sequential":
+            # Fixed order every target - same order (by registration id)
+            ordered_members = list(members)
 
         elif mode == "random":
             # Deterministic random based on group_id + target_number
-            seed = hash(group_id * 1000 + target_number)
+            # Uses a consistent seed so all group members see the same order
+            seed = group_id * 10000 + target_number * 7
             ordered_members = list(members)
             rng = random.Random(seed)
             rng.shuffle(ordered_members)
 
-        elif mode == "highest_score_first":
-            # Query scores, sort by total descending
-            member_scores = []
-            for member in members:
-                score_query = select(
-                    func.coalesce(func.sum(Scores.score_value), 0).label("total")
-                ).where(
-                    Scores.tournament_id == group.tournament_id,
-                    Scores.archer_id == member.id,
-                )
-                score_result = await self.db.execute(score_query)
-                total = score_result.scalar() or 0
-                member_scores.append((member, int(total)))
-
-            # Sort by score descending, then by id for tie-breaking
-            member_scores.sort(key=lambda x: (-x[1], x[0].id))
-            ordered_members = [ms[0] for ms in member_scores]
-
         else:
-            # Default to original order
-            ordered_members = members
+            # Default to sequential (fixed order)
+            ordered_members = list(members)
 
         return {
             "shooting_order_mode": mode,

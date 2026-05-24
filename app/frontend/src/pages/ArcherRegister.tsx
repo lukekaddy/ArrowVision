@@ -386,7 +386,7 @@ export default function ArcherRegister() {
                 tournament_id: tournament.id,
                 group_name: groupName.trim(),
                 member_ids: selectedMembers,
-                shooting_order_mode: 'round_robin',
+                shooting_order_mode: 'sequential',
                 visibility: groupVisibility,
               },
               options: {
@@ -464,7 +464,7 @@ export default function ArcherRegister() {
             tournament_id: tournament.id,
             group_name: groupName.trim(),
             member_ids: selectedMembers,
-            shooting_order_mode: 'round_robin',
+            shooting_order_mode: 'sequential',
             visibility: groupVisibility,
           },
           options: {
