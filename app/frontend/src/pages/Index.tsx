@@ -4,7 +4,7 @@ import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
-import { Trophy, ClipboardList, BarChart3, Calendar, MapPin, Zap, Pencil, Trash2 } from 'lucide-react';
+import { Trophy, ClipboardList, BarChart3, Calendar, MapPin, Zap, Pencil, Trash2, Clock } from 'lucide-react';
 import { getTournamentStatus, formatDateRange } from '@/lib/dateUtils';
 
 const HERO_URL = 'https://mgx-backend-cdn.metadl.com/generate/images/1230028/2026-05-14/orhcm3yaagpa/hero-archery-sunset.png';
@@ -19,6 +19,7 @@ interface Tournament {
   name: string;
   date: string;
   end_date?: string;
+  start_time?: string;
   status: string;
   location?: string;
   divisions?: string;
@@ -203,6 +204,11 @@ export default function Index() {
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3.5 w-3.5" /> {formatDateRange(t.date, t.end_date)}
                       </span>
+                      {t.start_time && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3.5 w-3.5 text-amber-400/70" /> {t.start_time}
+                        </span>
+                      )}
                       {t.location && (
                         <span className="flex items-center gap-1">
                           <MapPin className="h-3.5 w-3.5 text-emerald-400/70" /> {t.location}
@@ -293,6 +299,11 @@ export default function Index() {
                       <span className="flex items-center gap-1">
                         <Calendar className="h-3.5 w-3.5" /> {formatDateRange(t.date, t.end_date)}
                       </span>
+                      {t.start_time && (
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3.5 w-3.5 text-amber-400/70" /> {t.start_time}
+                        </span>
+                      )}
                       {t.location && (
                         <span className="flex items-center gap-1">
                           <MapPin className="h-3.5 w-3.5 text-emerald-400/70" /> {t.location}

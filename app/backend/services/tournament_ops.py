@@ -22,6 +22,8 @@ _TOURNAMENT_SAFE_COLS = [
 
 # Check if location column is available (set on first successful query)
 _location_available: Optional[bool] = None
+# Check if start_time column is available
+_start_time_available: Optional[bool] = None
 
 
 class TournamentOpsService:
@@ -47,12 +49,34 @@ class TournamentOpsService:
             _location_available = False
         return _location_available
 
+    async def _check_start_time_column(self) -> bool:
+        """Check if the start_time column exists in the tournaments table"""
+        global _start_time_available
+        if _start_time_available is not None:
+            return _start_time_available
+        try:
+            check_query = text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'tournaments' AND column_name = 'start_time'"
+            )
+            result = await self.db.execute(check_query)
+            row = result.scalar_one_or_none()
+            _start_time_available = row is not None
+        except Exception:
+            _start_time_available = False
+        return _start_time_available
+
     async def _get_tournament_columns(self) -> List[str]:
-        """Get the list of columns to select, including location if available"""
+        """Get the list of columns to select, including location and start_time if available"""
         has_location = await self._check_location_column()
+        has_start_time = await self._check_start_time_column()
         cols = list(_TOURNAMENT_SAFE_COLS)
         if has_location:
             cols.insert(4, "location")  # After "date"
+        if has_start_time:
+            # Insert after date (or after location if it exists)
+            insert_idx = 5 if has_location else 4
+            cols.insert(insert_idx, "start_time")
         return cols
 
     async def get_public_tournaments(self, skip: int = 0, limit: int = 50) -> Dict[str, Any]:
@@ -324,6 +348,7 @@ class TournamentOpsService:
             "name": row.get("name"),
             "date": start_date,
             "end_date": end_date,
+            "start_time": row.get("start_time", ""),
             "location": row.get("location", ""),
             "num_targets": row.get("num_targets"),
             "divisions": row.get("divisions"),
@@ -353,6 +378,7 @@ class TournamentOpsService:
             "name": t.name,
             "date": start_date,
             "end_date": end_date,
+            "start_time": getattr(t, "start_time", None) or "",
             "location": getattr(t, "location", None) or "",
             "num_targets": t.num_targets,
             "divisions": t.divisions,
@@ -530,9 +556,12 @@ class TournamentOpsService:
         created via the entity SDK (Atoms Cloud auth UUID) but updated via custom auth
         (integer ID). Authentication is already enforced at the router level."""
         has_location = await self._check_location_column()
+        has_start_time = await self._check_start_time_column()
         allowed_fields = ["name", "date", "num_targets", "divisions", "status", "courses", "mulligans", "scoring_template_id", "course_map_url"]
         if has_location:
             allowed_fields.append("location")
+        if has_start_time:
+            allowed_fields.append("start_time")
         set_parts = []
         params: Dict[str, Any] = {"tid": tournament_id}
         for field in allowed_fields:

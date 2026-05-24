@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Trophy, Plus, X, Check, MapPin, Eye, ExternalLink, Upload, Trash2, Map, AlertTriangle, CalendarDays } from 'lucide-react';
+import { Trophy, Plus, X, Check, MapPin, Eye, ExternalLink, Upload, Trash2, Map, AlertTriangle, CalendarDays, Clock } from 'lucide-react';
 import { getTodayString, getTournamentStatus } from '@/lib/dateUtils';
 
 const DIVISION_OPTIONS = [
@@ -63,6 +63,7 @@ export default function TournamentEdit() {
   const courseMapInputRef = useRef<HTMLInputElement>(null);
   const [location, setLocation] = useState('');
   const [date, setDate] = useState('');
+  const [startTime, setStartTime] = useState('');
   const [isMultiDay, setIsMultiDay] = useState(false);
   const [endDate, setEndDate] = useState('');
   const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
@@ -133,6 +134,7 @@ export default function TournamentEdit() {
       // Populate form fields
       setName(data.name || '');
       setLocation(data.location || '');
+      setStartTime(data.start_time || '');
       setDate(tournamentDate);
       // Set multi-day state
       if (tournamentEndDate && tournamentEndDate !== tournamentDate) {
@@ -342,6 +344,7 @@ export default function TournamentEdit() {
         data: {
           name,
           date: dateValue,
+          start_time: startTime || undefined,
           location: location || undefined,
           num_targets: totalTargets,
           divisions: selectedDivisions.join(','),
@@ -462,6 +465,23 @@ export default function TournamentEdit() {
                 })()}
               </p>
             )}
+          </div>
+
+          {/* Start Time */}
+          <div>
+            <Label className="text-slate-300 mb-1.5 block flex items-center gap-1.5">
+              <Clock className="h-4 w-4 text-emerald-400" />
+              Start Time
+            </Label>
+            <Input
+              type="time"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              className="bg-slate-800 border-slate-700 text-white"
+            />
+            <p className="text-xs text-slate-500 mt-1">
+              Registration will close at this time on the tournament start date
+            </p>
           </div>
 
           {/* Scorecard Selection */}

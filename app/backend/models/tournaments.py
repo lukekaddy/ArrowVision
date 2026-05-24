@@ -17,6 +17,7 @@ class Tournaments(Base):
     courses = Column(String, nullable=True)
     mulligans = Column(String, nullable=True)
     location = Column(String, nullable=True)
+    start_time = Column(String, nullable=True)
     scoring_template_id = Column(Integer, nullable=True)
     course_map_url = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=datetime.now)

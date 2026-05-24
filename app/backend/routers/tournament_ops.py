@@ -44,6 +44,7 @@ class UpdateScorecardRequest(BaseModel):
 class UpdateTournamentRequest(BaseModel):
     name: Optional[str] = None
     date: Optional[str] = None
+    start_time: Optional[str] = None
     location: Optional[str] = None
     num_targets: Optional[int] = None
     divisions: Optional[str] = None

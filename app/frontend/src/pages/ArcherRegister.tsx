@@ -1,18 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, ArrowLeft, Loader2, Users, Search, UserPlus, User } from 'lucide-react';
+import { CheckCircle, ArrowLeft, Loader2, Users, Search, UserPlus, User, Clock, XCircle } from 'lucide-react';
 
 interface TournamentDetail {
   id: number;
   name: string;
   date: string;
+  start_time?: string;
   location?: string;
   divisions?: string;
   mulligans?: string;
+}
+
+interface CountdownTime {
+  days: number;
+  hours: number;
+  minutes: number;
+  seconds: number;
+  expired: boolean;
 }
 
 interface MulliganTypeConfig {
@@ -87,6 +96,61 @@ export default function ArcherRegister() {
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [groupSearchQuery, setGroupSearchQuery] = useState('');
   const [joinedGroup, setJoinedGroup] = useState(false);
+
+  // Registration countdown state
+  const [countdown, setCountdown] = useState<CountdownTime | null>(null);
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const getRegistrationDeadline = useCallback((t: TournamentDetail): Date | null => {
+    if (!t.date) return null;
+    if (!t.start_time) return null;
+    // Combine date and start_time into a full datetime
+    // date is "YYYY-MM-DD", start_time is "HH:MM" (24h format)
+    const dateTimeStr = `${t.date}T${t.start_time}:00`;
+    const deadline = new Date(dateTimeStr);
+    if (isNaN(deadline.getTime())) return null;
+    return deadline;
+  }, []);
+
+  const calculateCountdown = useCallback((deadline: Date): CountdownTime => {
+    const now = new Date();
+    const diff = deadline.getTime() - now.getTime();
+    if (diff <= 0) {
+      return { days: 0, hours: 0, minutes: 0, seconds: 0, expired: true };
+    }
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    return { days, hours, minutes, seconds, expired: false };
+  }, []);
+
+  // Start countdown when tournament is loaded
+  useEffect(() => {
+    if (!tournament) return;
+    const deadline = getRegistrationDeadline(tournament);
+    if (!deadline) {
+      setCountdown(null);
+      return;
+    }
+    // Initial calculation
+    setCountdown(calculateCountdown(deadline));
+    // Update every second
+    countdownIntervalRef.current = setInterval(() => {
+      const cd = calculateCountdown(deadline);
+      setCountdown(cd);
+      if (cd.expired && countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+    }, 1000);
+    return () => {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+    };
+  }, [tournament, getRegistrationDeadline, calculateCountdown]);
+
+  const registrationClosed = countdown?.expired === true;
 
   useEffect(() => {
     const fetchTournament = async () => {
@@ -425,9 +489,57 @@ export default function ArcherRegister() {
           <h2 className="text-lg text-emerald-400 font-semibold mb-2">{tournament.name}</h2>
           <div className="flex flex-wrap gap-4 text-sm text-slate-400">
             <span>📅 {tournament.date}</span>
+            {tournament.start_time && <span>🕐 {tournament.start_time}</span>}
             {tournament.location && <span>📍 {tournament.location}</span>}
           </div>
         </div>
+
+        {/* Registration Countdown / Closed Banner */}
+        {countdown && !registrationClosed && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 mb-6">
+            <div className="flex items-center gap-2 mb-2">
+              <Clock className="h-5 w-5 text-amber-400" />
+              <span className="text-sm font-semibold text-amber-400">Registration closes in:</span>
+            </div>
+            <div className="flex items-center gap-3">
+              {countdown.days > 0 && (
+                <div className="flex flex-col items-center">
+                  <span className="text-2xl font-bold text-white">{countdown.days}</span>
+                  <span className="text-xs text-slate-400">days</span>
+                </div>
+              )}
+              <div className="flex flex-col items-center">
+                <span className="text-2xl font-bold text-white">{String(countdown.hours).padStart(2, '0')}</span>
+                <span className="text-xs text-slate-400">hours</span>
+              </div>
+              <span className="text-xl text-slate-500 font-bold">:</span>
+              <div className="flex flex-col items-center">
+                <span className="text-2xl font-bold text-white">{String(countdown.minutes).padStart(2, '0')}</span>
+                <span className="text-xs text-slate-400">min</span>
+              </div>
+              <span className="text-xl text-slate-500 font-bold">:</span>
+              <div className="flex flex-col items-center">
+                <span className="text-2xl font-bold text-white">{String(countdown.seconds).padStart(2, '0')}</span>
+                <span className="text-xs text-slate-400">sec</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {registrationClosed && (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-5 mb-6 text-center">
+            <XCircle className="h-10 w-10 text-red-400 mx-auto mb-2" />
+            <h3 className="text-lg font-bold text-red-400 mb-1">Registration Closed</h3>
+            <p className="text-sm text-slate-400">
+              The registration deadline for this tournament has passed. The tournament has already started.
+            </p>
+            <Link to="/archer">
+              <Button className="mt-4 bg-slate-700 hover:bg-slate-600 text-white gap-2">
+                <ArrowLeft className="h-4 w-4" /> Back to Home
+              </Button>
+            </Link>
+          </div>
+        )}
 
         {error && (
           <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 mb-6">
@@ -435,7 +547,7 @@ export default function ArcherRegister() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className={`space-y-5 ${registrationClosed ? 'opacity-50 pointer-events-none' : ''}`}>
           {/* Basic Info Section */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -736,13 +848,15 @@ export default function ArcherRegister() {
 
           <Button
             type="submit"
-            disabled={submitting || !firstName || !lastName}
+            disabled={submitting || !firstName || !lastName || registrationClosed}
             className="w-full h-12 bg-emerald-500 hover:bg-emerald-600 text-white font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? (
               <span className="flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" /> Registering...
               </span>
+            ) : registrationClosed ? (
+              'Registration Closed'
             ) : (
               'Register Now'
             )}
