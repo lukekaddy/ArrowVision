@@ -341,7 +341,7 @@ export default function Scorecard() {
     }
   }, [bowlingMode, loadCurrentTarget, loadShooterIndex]);
 
-  // Auto-advance shooter logic: when scores update, check if current shooter has scored
+  // Auto-advance shooter logic: when scores update, find the correct active shooter and target
   useEffect(() => {
     if (!bowlingMode) return;
 
@@ -364,47 +364,64 @@ export default function Scorecard() {
       return;
     }
 
-    // Group mode: use shooting order to determine advancement
+    // Group mode: scan from current target forward to find the correct state
     const orderedArcherIds = shootingOrder.map(entry => entry.archer_id);
     if (orderedArcherIds.length === 0) return;
 
-    // Determine how many consecutive shooters (starting from currentShooterIndex) have already scored
-    let advanceCount = 0;
-    for (let i = 0; i < orderedArcherIds.length; i++) {
-      const idx = (currentShooterIndex + i) % orderedArcherIds.length;
-      const archerId = orderedArcherIds[idx];
-      const archerScores = allScores[archerId] || {};
-      if (archerScores[currentTarget] !== undefined) {
-        advanceCount++;
-      } else {
-        break;
-      }
-    }
+    // Walk through targets starting from currentTarget to find the first target
+    // where not all shooters have scored, then find the first unscored shooter
+    let targetToCheck = currentTarget;
 
-    if (advanceCount === 0) return;
+    while (targetToCheck <= maxTargets) {
+      // Check if ALL shooters have scored this target
+      let allScored = true;
+      let firstUnscoredIndex = -1;
 
-    // All shooters have scored the current target → advance to next target
-    if (advanceCount >= orderedArcherIds.length) {
-      if (currentTarget < maxTargets) {
-        const nextTarget = currentTarget + 1;
-        setCurrentTarget(nextTarget);
-        saveCurrentTarget(nextTarget);
-        setCurrentShooterIndex(0);
-        saveShooterIndex(0);
-        // Auto-scroll visible window
-        if (nextTarget > visibleTargetStart + VISIBLE_TARGETS - 1) {
-          setVisibleTargetStart(Math.min(nextTarget - VISIBLE_TARGETS + 1, maxTargets - VISIBLE_TARGETS + 1));
+      for (let i = 0; i < orderedArcherIds.length; i++) {
+        const archerId = orderedArcherIds[i];
+        const archerScores = allScores[archerId] || {};
+        if (archerScores[targetToCheck] === undefined) {
+          allScored = false;
+          if (firstUnscoredIndex === -1) {
+            firstUnscoredIndex = i;
+          }
         }
       }
-      // If currentTarget >= maxTargets, all targets complete - stay on last target
+
+      if (allScored) {
+        // All shooters scored this target, advance to next target
+        targetToCheck++;
+        continue;
+      }
+
+      // Found a target with unscored shooters - this is where we should be
+      if (targetToCheck !== currentTarget) {
+        setCurrentTarget(targetToCheck);
+        saveCurrentTarget(targetToCheck);
+        // Auto-scroll visible window
+        if (targetToCheck > visibleTargetStart + VISIBLE_TARGETS - 1) {
+          setVisibleTargetStart(Math.min(targetToCheck - VISIBLE_TARGETS + 1, maxTargets - VISIBLE_TARGETS + 1));
+        }
+      }
+
+      // Set the active shooter to the first unscored archer (in shooting order)
+      if (firstUnscoredIndex !== -1 && firstUnscoredIndex !== currentShooterIndex) {
+        setCurrentShooterIndex(firstUnscoredIndex);
+        saveShooterIndex(firstUnscoredIndex);
+      } else if (firstUnscoredIndex !== -1 && firstUnscoredIndex === currentShooterIndex) {
+        // Already correct, no update needed
+      }
       return;
     }
 
-    // Advance shooter index by the number of consecutive scored shooters
-    const newIndex = (currentShooterIndex + advanceCount) % orderedArcherIds.length;
-    if (newIndex !== currentShooterIndex) {
-      setCurrentShooterIndex(newIndex);
-      saveShooterIndex(newIndex);
+    // If we get here, all targets are fully scored - stay on last target, reset shooter to 0
+    if (currentTarget !== maxTargets) {
+      setCurrentTarget(maxTargets);
+      saveCurrentTarget(maxTargets);
+    }
+    if (currentShooterIndex !== 0) {
+      setCurrentShooterIndex(0);
+      saveShooterIndex(0);
     }
   }, [allScores, bowlingMode, shootingOrder, currentShooterIndex, currentTarget, maxTargets, selectedArcher, saveCurrentTarget, saveShooterIndex, visibleTargetStart]);
 
