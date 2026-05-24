@@ -59,7 +59,7 @@ export default function AuthPage() {
         password,
         first_name: firstName,
         last_name: lastName,
-        phone: phone || undefined,
+        phone,
         role,
       });
       handleSuccess(user.role);
@@ -230,12 +230,13 @@ export default function AuthPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="reg-phone" className="text-slate-300">Phone <span className="text-slate-500">(optional)</span></Label>
+              <Label htmlFor="reg-phone" className="text-slate-300">Phone</Label>
               <Input
                 id="reg-phone"
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
+                required
                 placeholder="(555) 123-4567"
                 className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500 h-11"
               />

@@ -66,9 +66,9 @@ export default function ArcherRegister() {
   const [error, setError] = useState<string | null>(null);
   const [alreadyRegistered, setAlreadyRegistered] = useState(false);
 
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [firstName, setFirstName] = useState(user?.first_name || '');
+  const [lastName, setLastName] = useState(user?.last_name || '');
+  const [phone, setPhone] = useState(user?.phone || '');
   const [division, setDivision] = useState('');
   const [purchasedMulligans, setPurchasedMulligans] = useState<Record<string, number>>({});
 
