@@ -310,40 +310,84 @@ export default function ArcherHome() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {upcomingTournaments.map((t) => (
-              <div
-                key={t.id}
-                className="group rounded-xl border border-slate-700/50 bg-slate-800/50 hover:bg-slate-800 hover:border-blue-500/30 transition-all p-5"
-              >
-                <h3 className="text-lg font-semibold text-white mb-2 group-hover:text-blue-400 transition-colors">
-                  {t.name}
-                </h3>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-400 mb-3">
-                  <span className="flex items-center gap-1">
-                    <Calendar className="h-3.5 w-3.5" /> {t.date}
-                  </span>
-                  {t.location && (
+            {upcomingTournaments.map((t) => {
+              const myEntry = myTournaments.find((m) => m.tournament.id === t.id);
+              const isRegistered = !!myEntry;
+              const groupName = myEntry?.registration?.group_name;
+
+              return (
+                <div
+                  key={t.id}
+                  className="group rounded-xl border border-slate-700/50 bg-slate-800/50 hover:bg-slate-800 hover:border-blue-500/30 transition-all p-5"
+                >
+                  <h3 className="text-lg font-semibold text-white mb-2 group-hover:text-blue-400 transition-colors">
+                    {t.name}
+                  </h3>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-400 mb-3">
                     <span className="flex items-center gap-1">
-                      <MapPin className="h-3.5 w-3.5 text-blue-400/70" /> {t.location}
+                      <Calendar className="h-3.5 w-3.5" /> {t.date}
                     </span>
+                    {t.location && (
+                      <span className="flex items-center gap-1">
+                        <MapPin className="h-3.5 w-3.5 text-blue-400/70" /> {t.location}
+                      </span>
+                    )}
+                  </div>
+                  {t.divisions && (
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      {t.divisions.split(',').map((d) => (
+                        <span key={d.trim()} className="text-xs px-2 py-0.5 rounded bg-slate-700/50 text-slate-400">
+                          {d.trim()}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Group Status / Registration Action */}
+                  {isRegistered ? (
+                    <div className="mb-3">
+                      {groupName ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                          <Users className="h-3 w-3" />
+                          Group: {groupName}
+                        </span>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Link
+                            to={`/archer/register/${t.id}?tab=find`}
+                            className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-400 hover:bg-blue-500/30 transition-colors"
+                          >
+                            <Users className="h-3 w-3" />
+                            Find Group
+                          </Link>
+                          <Link
+                            to={`/archer/register/${t.id}?tab=create`}
+                            className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/30 transition-colors"
+                          >
+                            <Users className="h-3 w-3" />
+                            Create Group
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+
+                  {isRegistered ? (
+                    <div className="flex items-center gap-2">
+                      <span className="flex-1 text-center text-xs font-medium py-2 rounded-lg bg-slate-700/50 text-slate-400 border border-slate-600/30">
+                        ✓ Registered
+                      </span>
+                    </div>
+                  ) : (
+                    <Link to={`/archer/register/${t.id}`}>
+                      <Button size="sm" className="w-full bg-blue-500 hover:bg-blue-600 text-white gap-2">
+                        Register <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    </Link>
                   )}
                 </div>
-                {t.divisions && (
-                  <div className="flex flex-wrap gap-1.5 mb-4">
-                    {t.divisions.split(',').map((d) => (
-                      <span key={d.trim()} className="text-xs px-2 py-0.5 rounded bg-slate-700/50 text-slate-400">
-                        {d.trim()}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <Link to={`/archer/register/${t.id}`}>
-                  <Button size="sm" className="w-full bg-blue-500 hover:bg-blue-600 text-white gap-2">
-                    Register <ArrowRight className="h-4 w-4" />
-                  </Button>
-                </Link>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
@@ -473,6 +517,33 @@ function UpcomingRegisteredCard({ entry }: { entry: MyTournamentEntry }) {
           <span className="flex items-center gap-1">
             <MapPin className="h-3.5 w-3.5" /> {entry.tournament.location}
           </span>
+        )}
+      </div>
+
+      {/* Group Status */}
+      <div className="mt-3">
+        {entry.registration.group_name ? (
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+            <Users className="h-3 w-3" />
+            Group: {entry.registration.group_name}
+          </span>
+        ) : (
+          <div className="flex items-center gap-2">
+            <Link
+              to={`/archer/register/${entry.tournament.id}?tab=find`}
+              className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-500/20 border border-blue-500/30 text-blue-400 hover:bg-blue-500/30 transition-colors"
+            >
+              <Users className="h-3 w-3" />
+              Find Group
+            </Link>
+            <Link
+              to={`/archer/register/${entry.tournament.id}?tab=create`}
+              className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/30 transition-colors"
+            >
+              <Users className="h-3 w-3" />
+              Create Group
+            </Link>
+          </div>
         )}
       </div>
 
