@@ -72,6 +72,7 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 - [x] Build POST /api/v1/replays/upload endpoint for video upload with metadata
 - [x] Build GET /api/v1/replays/get endpoint to retrieve replay by archer+target
 - [x] Update SmartScore page to fetch and display actual uploaded replay video
+- [x] Add auto-advance shooter/target logic to Scorecard bowling mode (client-side tracking with localStorage persistence)
 
 - [x] Create archer_groups database table (tournament_id, group_name, group_number, shooting_order_mode, creator_id)
 - [x] Add group_name column to tournament_archers table

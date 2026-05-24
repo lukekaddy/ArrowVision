@@ -102,6 +102,9 @@ export default function Scorecard() {
   const restoredFromParams = useRef(false);
   const [directModeLoading, setDirectModeLoading] = useState(false);
 
+  // Current shooter index for auto-advance (client-side tracking)
+  const [currentShooterIndex, setCurrentShooterIndex] = useState(0);
+
   // Number of target columns visible at once on the scoreboard
   const VISIBLE_TARGETS = 5;
 
@@ -120,6 +123,38 @@ export default function Scorecard() {
     const courseNum = selectedCourse?.course || 1;
     return `bowling_current_target_${selectedTournament.id}_${courseNum}`;
   }, [selectedTournament, selectedCourse]);
+
+  // Storage key for current shooter index persistence
+  const getShooterIndexKey = useCallback(() => {
+    if (!selectedTournament) return null;
+    const courseNum = selectedCourse?.course || 1;
+    return `bowling_shooter_index_${selectedTournament.id}_${courseNum}`;
+  }, [selectedTournament, selectedCourse]);
+
+  // Save shooter index to localStorage
+  const saveShooterIndex = useCallback((index: number) => {
+    const key = getShooterIndexKey();
+    if (key) {
+      localStorage.setItem(key, index.toString());
+    }
+  }, [getShooterIndexKey]);
+
+  // Load shooter index from localStorage
+  const loadShooterIndex = useCallback(() => {
+    const key = getShooterIndexKey();
+    if (!key) return;
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        const val = parseInt(stored);
+        if (!isNaN(val) && val >= 0) {
+          setCurrentShooterIndex(val);
+          return;
+        }
+      }
+    } catch { /* ignore */ }
+    setCurrentShooterIndex(0);
+  }, [getShooterIndexKey]);
 
   // Load all scores for group members from localStorage
   const loadAllScores = useCallback(() => {
@@ -298,12 +333,80 @@ export default function Scorecard() {
     }
   }, [bowlingMode, groupEntry, currentTarget, fetchShootingOrder]);
 
-  // Load current target from storage when entering bowling mode
+  // Load current target and shooter index from storage when entering bowling mode
   useEffect(() => {
     if (bowlingMode) {
       loadCurrentTarget();
+      loadShooterIndex();
     }
-  }, [bowlingMode, loadCurrentTarget]);
+  }, [bowlingMode, loadCurrentTarget, loadShooterIndex]);
+
+  // Auto-advance shooter logic: when scores update, check if current shooter has scored
+  useEffect(() => {
+    if (!bowlingMode) return;
+
+    // Solo mode: no group, just one archer - auto-advance target when scored
+    if (shootingOrder.length === 0) {
+      if (!selectedArcher) return;
+      const archerScores = allScores[selectedArcher.id] || {};
+      if (archerScores[currentTarget] !== undefined) {
+        // Current target is scored, advance to next target
+        if (currentTarget < maxTargets) {
+          const nextTarget = currentTarget + 1;
+          setCurrentTarget(nextTarget);
+          saveCurrentTarget(nextTarget);
+          // Auto-scroll visible window
+          if (nextTarget > visibleTargetStart + VISIBLE_TARGETS - 1) {
+            setVisibleTargetStart(Math.min(nextTarget - VISIBLE_TARGETS + 1, maxTargets - VISIBLE_TARGETS + 1));
+          }
+        }
+      }
+      return;
+    }
+
+    // Group mode: use shooting order to determine advancement
+    const orderedArcherIds = shootingOrder.map(entry => entry.archer_id);
+    if (orderedArcherIds.length === 0) return;
+
+    // Determine how many consecutive shooters (starting from currentShooterIndex) have already scored
+    let advanceCount = 0;
+    for (let i = 0; i < orderedArcherIds.length; i++) {
+      const idx = (currentShooterIndex + i) % orderedArcherIds.length;
+      const archerId = orderedArcherIds[idx];
+      const archerScores = allScores[archerId] || {};
+      if (archerScores[currentTarget] !== undefined) {
+        advanceCount++;
+      } else {
+        break;
+      }
+    }
+
+    if (advanceCount === 0) return;
+
+    // All shooters have scored the current target → advance to next target
+    if (advanceCount >= orderedArcherIds.length) {
+      if (currentTarget < maxTargets) {
+        const nextTarget = currentTarget + 1;
+        setCurrentTarget(nextTarget);
+        saveCurrentTarget(nextTarget);
+        setCurrentShooterIndex(0);
+        saveShooterIndex(0);
+        // Auto-scroll visible window
+        if (nextTarget > visibleTargetStart + VISIBLE_TARGETS - 1) {
+          setVisibleTargetStart(Math.min(nextTarget - VISIBLE_TARGETS + 1, maxTargets - VISIBLE_TARGETS + 1));
+        }
+      }
+      // If currentTarget >= maxTargets, all targets complete - stay on last target
+      return;
+    }
+
+    // Advance shooter index by the number of consecutive scored shooters
+    const newIndex = (currentShooterIndex + advanceCount) % orderedArcherIds.length;
+    if (newIndex !== currentShooterIndex) {
+      setCurrentShooterIndex(newIndex);
+      saveShooterIndex(newIndex);
+    }
+  }, [allScores, bowlingMode, shootingOrder, currentShooterIndex, currentTarget, maxTargets, selectedArcher, saveCurrentTarget, saveShooterIndex, visibleTargetStart]);
 
   // Check replays in bowling mode
   useEffect(() => {
@@ -498,9 +601,13 @@ export default function Scorecard() {
     return Object.keys(scores).length;
   };
 
-  // Determine active shooter and next shooter from shooting order
-  const activeShooter = shootingOrder.length > 0 ? shootingOrder[0] : null;
-  const nextShooter = shootingOrder.length > 1 ? shootingOrder[1] : null;
+  // Determine active shooter and next shooter using client-side currentShooterIndex
+  const activeShooter = shootingOrder.length > 0
+    ? shootingOrder[currentShooterIndex % shootingOrder.length] || shootingOrder[0]
+    : null;
+  const nextShooter = shootingOrder.length > 1
+    ? shootingOrder[(currentShooterIndex + 1) % shootingOrder.length] || shootingOrder[1]
+    : null;
 
   // Visible target numbers for the scoreboard grid
   const visibleTargets = Array.from(
