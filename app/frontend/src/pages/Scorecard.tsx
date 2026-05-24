@@ -898,7 +898,12 @@ export default function Scorecard() {
                             const score = memberScores[targetNum];
                             const hasScore = score !== undefined;
                             const isCurrent = targetNum === currentTarget;
-                            const canTap = isCurrentUser && !hasScore;
+                            // In group mode: only the active shooter can tap, and only on the current target
+                            // In solo mode (no group): the current user can tap their own current target
+                            const isMyTurn = groupEntry
+                              ? (activeShooter?.archer_id === member.id && isCurrentUser)
+                              : isCurrentUser;
+                            const canTap = isMyTurn && !hasScore && isCurrent;
 
                             return (
                               <td
@@ -915,17 +920,15 @@ export default function Scorecard() {
                                       ? score === 0
                                         ? 'bg-red-500/20 text-red-400 border border-red-500/30'
                                         : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                                      : canTap && isCurrent
-                                      ? 'bg-emerald-500/10 border-2 border-dashed border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-400 cursor-pointer active:scale-95'
                                       : canTap
-                                      ? 'bg-slate-800/50 border border-slate-700/50 text-slate-600 hover:border-emerald-500/30 hover:text-emerald-400 cursor-pointer'
+                                      ? 'bg-emerald-500/10 border-2 border-dashed border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-400 cursor-pointer active:scale-95'
                                       : 'bg-slate-800/30 border border-slate-800/50 text-slate-700'
                                   }`}
                                 >
                                   {hasScore ? (
                                     score === 0 ? 'M' : score
                                   ) : (
-                                    canTap && isCurrent ? <Crosshair className="h-4 w-4" /> : '·'
+                                    canTap ? <Crosshair className="h-4 w-4" /> : '·'
                                   )}
                                 </button>
                               </td>
