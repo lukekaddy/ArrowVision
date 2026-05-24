@@ -8,23 +8,31 @@
         },
         "tournament_id": {
             "type": "integer",
-            "description": "Tournament ID this group belongs to"
+            "description": "Tournament ID"
         },
         "group_name": {
             "type": "string",
-            "description": "Name of the archer group"
+            "description": "Group name"
         },
         "group_number": {
             "type": "integer",
-            "description": "Numeric identifier for the group within a tournament"
+            "description": "Group number within tournament"
         },
         "shooting_order_mode": {
             "type": "string",
-            "description": "Shooting order mode: round_robin, random, or highest_score_first. Default round_robin"
+            "description": "Shooting order mode"
         },
         "creator_id": {
             "type": "string",
-            "description": "User ID of the group creator"
+            "description": "User ID of group creator"
+        },
+        "visibility": {
+            "type": "string",
+            "description": "Group visibility: public or private"
+        },
+        "invite_code": {
+            "type": "string",
+            "description": "6-char alphanumeric invite code"
         }
     },
     "required": [

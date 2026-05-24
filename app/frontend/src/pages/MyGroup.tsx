@@ -3,7 +3,7 @@ import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
-import { Users, LogOut, RefreshCw, Loader2, AlertCircle, ChevronDown, ChevronUp, MapPin, Calendar } from 'lucide-react';
+import { Users, LogOut, RefreshCw, Loader2, AlertCircle, ChevronDown, ChevronUp, MapPin, Calendar, Copy, Check, Lock, Trash2 } from 'lucide-react';
 
 interface GroupMember {
   id: number;
@@ -19,12 +19,15 @@ interface GroupInfo {
   shooting_order_mode?: string;
   creator_id?: string;
   tournament_id: number;
+  invite_code?: string;
+  visibility?: string;
 }
 
 interface TournamentInfo {
   id: number;
   name: string;
   date?: string | null;
+  start_time?: string | null;
   location?: string | null;
 }
 
@@ -58,9 +61,16 @@ export default function MyGroup() {
   // Leave group state
   const [leavingGroupId, setLeavingGroupId] = useState<number | null>(null);
 
+  // Dissolve group state
+  const [dissolvingGroupId, setDissolvingGroupId] = useState<number | null>(null);
+  const [confirmDissolveId, setConfirmDissolveId] = useState<number | null>(null);
+
   // Shooting order mode
   const [changingModeId, setChangingModeId] = useState<number | null>(null);
   const [selectedModes, setSelectedModes] = useState<Record<number, string>>({});
+
+  // Copy invite code
+  const [copiedGroupId, setCopiedGroupId] = useState<number | null>(null);
 
   useEffect(() => {
     fetchAllGroups();
@@ -152,7 +162,6 @@ export default function MyGroup() {
           headers: { Authorization: `Bearer ${token}` },
         },
       });
-      // Remove from local state
       setGroups((prev) => prev.filter((g) => g.group.id !== groupId));
       if (expandedGroupId === groupId) {
         setExpandedGroupId(null);
@@ -161,6 +170,30 @@ export default function MyGroup() {
       setError('Failed to leave group. Please try again.');
     } finally {
       setLeavingGroupId(null);
+    }
+  };
+
+  const handleDissolveGroup = async (groupId: number) => {
+    if (!token) return;
+    setDissolvingGroupId(groupId);
+    try {
+      await client.apiCall.invoke({
+        url: '/api/v1/groups/dissolve',
+        method: 'POST',
+        data: { group_id: groupId },
+        options: {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      });
+      setGroups((prev) => prev.filter((g) => g.group.id !== groupId));
+      if (expandedGroupId === groupId) {
+        setExpandedGroupId(null);
+      }
+      setConfirmDissolveId(null);
+    } catch {
+      setError('Failed to dissolve group. Please try again.');
+    } finally {
+      setDissolvingGroupId(null);
     }
   };
 
@@ -176,7 +209,6 @@ export default function MyGroup() {
           headers: { Authorization: `Bearer ${token}` },
         },
       });
-      // Update local state
       setGroups((prev) =>
         prev.map((g) =>
           g.group.id === groupId
@@ -184,13 +216,38 @@ export default function MyGroup() {
             : g
         )
       );
-      // Refresh shooting order
       fetchShootingOrder(groupId);
     } catch {
       setError('Failed to update shooting order mode.');
     } finally {
       setChangingModeId(null);
     }
+  };
+
+  const handleCopyInviteCode = async (groupId: number, code: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedGroupId(groupId);
+      setTimeout(() => setCopiedGroupId(null), 2000);
+    } catch {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = code;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setCopiedGroupId(groupId);
+      setTimeout(() => setCopiedGroupId(null), 2000);
+    }
+  };
+
+  const isTournamentStarted = (tournament: TournamentInfo): boolean => {
+    if (!tournament.date || !tournament.start_time) return false;
+    const dateTimeStr = `${tournament.date}T${tournament.start_time}:00`;
+    const deadline = new Date(dateTimeStr);
+    if (isNaN(deadline.getTime())) return false;
+    return new Date() >= deadline;
   };
 
   const toggleExpand = (groupId: number) => {
@@ -243,6 +300,7 @@ export default function MyGroup() {
             const isExpanded = expandedGroupId === group.id;
             const isCreator = String(group.creator_id) === String(user?.id);
             const isLeaving = leavingGroupId === group.id;
+            const isLocked = isTournamentStarted(tournament);
 
             return (
               <div
@@ -256,9 +314,17 @@ export default function MyGroup() {
                   className="w-full p-5 flex items-start justify-between text-left hover:bg-slate-700/20 transition-colors"
                 >
                   <div className="flex-1 min-w-0">
-                    <h2 className="text-lg font-semibold text-white truncate">
-                      {group.group_name || `Group ${group.group_number || group.id}`}
-                    </h2>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-lg font-semibold text-white truncate">
+                        {group.group_name || `Group ${group.group_number || group.id}`}
+                      </h2>
+                      {isLocked && (
+                        <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 text-xs font-medium">
+                          <Lock className="h-3 w-3" />
+                          Locked
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm text-emerald-400 font-medium mt-0.5 truncate">
                       {tournament.name}
                     </p>
@@ -298,14 +364,57 @@ export default function MyGroup() {
                 {/* Expanded Content */}
                 {isExpanded && (
                   <div className="border-t border-slate-700/50 px-5 pb-5">
+                    {/* Invite Code Section */}
+                    {group.invite_code && (
+                      <div className="mt-4 mb-5 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-xs font-medium text-emerald-400 uppercase tracking-wider mb-1">Invite Code</p>
+                            <p className="text-2xl font-mono font-bold text-white tracking-widest">
+                              {group.invite_code}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyInviteCode(group.id, group.invite_code!)}
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-sm font-medium transition-colors"
+                          >
+                            {copiedGroupId === group.id ? (
+                              <>
+                                <Check className="h-4 w-4" />
+                                Copied!
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="h-4 w-4" />
+                                Copy
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-2">
+                          Share this code with others so they can join your group
+                        </p>
+                      </div>
+                    )}
+
                     {/* Group Meta */}
-                    <div className="flex flex-wrap gap-3 text-sm mt-4 mb-5">
+                    <div className="flex flex-wrap gap-3 text-sm mb-5">
                       <span className="px-3 py-1.5 rounded-lg bg-slate-700/50 text-slate-300">
                         Mode: <span className="text-white font-medium">{group.shooting_order_mode || 'round_robin'}</span>
                       </span>
                       <span className="px-3 py-1.5 rounded-lg bg-slate-700/50 text-slate-300">
                         Members: <span className="text-white font-medium">{members.length}</span>
                       </span>
+                      {group.visibility && (
+                        <span className={`px-3 py-1.5 rounded-lg ${
+                          group.visibility === 'public'
+                            ? 'bg-emerald-500/10 text-emerald-400'
+                            : 'bg-amber-500/10 text-amber-400'
+                        }`}>
+                          {group.visibility === 'public' ? 'Public' : 'Private'}
+                        </span>
+                      )}
                     </div>
 
                     {/* Members List */}
@@ -380,54 +489,115 @@ export default function MyGroup() {
                       )}
                     </div>
 
-                    {/* Change Shooting Order Mode (Creator only) */}
-                    {isCreator && (
-                      <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4 mb-5">
-                        <h3 className="text-sm font-semibold text-amber-400 mb-3">Change Shooting Order Mode</h3>
-                        <div className="flex items-center gap-3">
-                          <select
-                            value={selectedModes[group.id] || 'round_robin'}
-                            onChange={(e) =>
-                              setSelectedModes((prev) => ({ ...prev, [group.id]: e.target.value }))
-                            }
-                            className="flex-1 h-10 px-3 rounded-lg border border-slate-600 bg-slate-800 text-white text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
-                          >
-                            <option value="round_robin">Round Robin</option>
-                            <option value="sequential">Sequential</option>
-                            <option value="random">Random</option>
-                          </select>
+                    {/* Actions - hidden when locked */}
+                    {!isLocked && (
+                      <>
+                        {/* Change Shooting Order Mode (Creator only) */}
+                        {isCreator && (
+                          <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-4 mb-5">
+                            <h3 className="text-sm font-semibold text-amber-400 mb-3">Change Shooting Order Mode</h3>
+                            <div className="flex items-center gap-3">
+                              <select
+                                value={selectedModes[group.id] || 'round_robin'}
+                                onChange={(e) =>
+                                  setSelectedModes((prev) => ({ ...prev, [group.id]: e.target.value }))
+                                }
+                                className="flex-1 h-10 px-3 rounded-lg border border-slate-600 bg-slate-800 text-white text-sm focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none"
+                              >
+                                <option value="round_robin">Round Robin</option>
+                                <option value="sequential">Sequential</option>
+                                <option value="random">Random</option>
+                              </select>
+                              <Button
+                                type="button"
+                                onClick={() => handleChangeMode(group.id)}
+                                disabled={changingModeId === group.id || selectedModes[group.id] === group.shooting_order_mode}
+                                className="bg-amber-500 hover:bg-amber-600 text-white text-sm disabled:opacity-50"
+                              >
+                                {changingModeId === group.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Update'}
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Action Buttons */}
+                        <div className="pt-4 border-t border-slate-700/50 flex flex-wrap gap-3">
                           <Button
                             type="button"
-                            onClick={() => handleChangeMode(group.id)}
-                            disabled={changingModeId === group.id || selectedModes[group.id] === group.shooting_order_mode}
-                            className="bg-amber-500 hover:bg-amber-600 text-white text-sm disabled:opacity-50"
+                            variant="ghost"
+                            onClick={() => handleLeaveGroup(group.tournament_id, group.id)}
+                            disabled={isLeaving}
+                            className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
                           >
-                            {changingModeId === group.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Update'}
+                            {isLeaving ? (
+                              <span className="flex items-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin" /> Leaving...
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-2">
+                                <LogOut className="h-4 w-4" /> Leave Group
+                              </span>
+                            )}
                           </Button>
+
+                          {/* Dissolve Group (Creator only) */}
+                          {isCreator && (
+                            <>
+                              {confirmDissolveId === group.id ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-red-400">Are you sure?</span>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    onClick={() => handleDissolveGroup(group.id)}
+                                    disabled={dissolvingGroupId === group.id}
+                                    className="bg-red-500 hover:bg-red-600 text-white text-xs"
+                                  >
+                                    {dissolvingGroupId === group.id ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      'Yes, Dissolve'
+                                    )}
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => setConfirmDissolveId(null)}
+                                    className="text-slate-400 hover:text-white text-xs"
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              ) : (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  onClick={() => setConfirmDissolveId(group.id)}
+                                  className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <Trash2 className="h-4 w-4" /> Dissolve Group
+                                  </span>
+                                </Button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    {/* Locked state message */}
+                    {isLocked && (
+                      <div className="pt-4 border-t border-slate-700/50">
+                        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 flex items-center gap-2">
+                          <Lock className="h-4 w-4 text-red-400 flex-shrink-0" />
+                          <p className="text-sm text-red-400">
+                            Group actions are locked — tournament has started
+                          </p>
                         </div>
                       </div>
                     )}
-
-                    {/* Leave Group */}
-                    <div className="pt-4 border-t border-slate-700/50">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={() => handleLeaveGroup(group.tournament_id, group.id)}
-                        disabled={isLeaving}
-                        className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                      >
-                        {isLeaving ? (
-                          <span className="flex items-center gap-2">
-                            <Loader2 className="h-4 w-4 animate-spin" /> Leaving...
-                          </span>
-                        ) : (
-                          <span className="flex items-center gap-2">
-                            <LogOut className="h-4 w-4" /> Leave Group
-                          </span>
-                        )}
-                      </Button>
-                    </div>
                   </div>
                 )}
               </div>

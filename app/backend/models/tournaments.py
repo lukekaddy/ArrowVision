@@ -20,5 +20,6 @@ class Tournaments(Base):
     start_time = Column(String, nullable=True)
     scoring_template_id = Column(Integer, nullable=True)
     course_map_url = Column(String, nullable=True)
+    max_group_size = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), default=datetime.now)
     updated_at = Column(DateTime(timezone=True), default=datetime.now, onupdate=datetime.now)

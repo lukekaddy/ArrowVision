@@ -102,6 +102,11 @@ Build "ArrowLive" - a mobile-first web app for archery tournament scoring and ma
 - [x] Create New Group sub-flow: preserved from original with group name + member selection
 - [x] Prevent duplicate tournament registration (backend validation + frontend pre-check)
 - [x] Redesign My Scorecards page: Active (prominent, LIVE badge, Continue Scoring CTA), Upcoming (amber, countdown), Completed (collapsible, search/sort, Load More)
+- [x] Add max_group_size field to tournaments (backend model + DB + TournamentCreate + TournamentEdit)
+- [x] Add visibility (public/private) and invite_code to archer_groups (backend model + DB)
+- [x] Build backend group management enhancements: join-by-code, dissolve group, find public groups, time-lock enforcement
+- [x] Redesign ArcherRegister with 3 tabs: Find Group, Join by Code, Create Group (removed solo option)
+- [x] Update MyGroup with invite code display, copy button, dissolve option, time-lock UI
 
 ## Progress Log
 - Backend tables created: tournaments, tournament_archers, scores

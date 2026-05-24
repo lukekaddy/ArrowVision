@@ -9,7 +9,7 @@ import sqlalchemy as sa
 
 # revision identifiers
 revision = 'add_start_time_col'
-down_revision = None
+down_revision = '247d98c335ed'
 branch_labels = None
 depends_on = None
 

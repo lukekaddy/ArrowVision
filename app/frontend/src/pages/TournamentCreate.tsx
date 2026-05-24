@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Trophy, Plus, X, Check, MapPin, Eye, ExternalLink, Upload, Trash2, Map, CalendarDays, Clock } from 'lucide-react';
+import { Trophy, Plus, X, Check, MapPin, Eye, ExternalLink, Upload, Trash2, Map, CalendarDays, Clock, Users } from 'lucide-react';
 import { getTournamentStatus } from '@/lib/dateUtils';
 
 const DIVISION_OPTIONS = [
@@ -71,6 +71,9 @@ export default function TournamentCreate() {
   const [savedScorecards, setSavedScorecards] = useState<SavedScorecard[]>([]);
   const [selectedScorecardId, setSelectedScorecardId] = useState<string>('');
   const [showPreview, setShowPreview] = useState(false);
+
+  // Max Group Size
+  const [maxGroupSize, setMaxGroupSize] = useState(4);
 
   // Mulligan state
   const [mulligansEnabled, setMulligansEnabled] = useState(false);
@@ -210,6 +213,7 @@ export default function TournamentCreate() {
           mulligans: JSON.stringify(mulliganConfig),
           scoring_template_id: selectedScorecardId ? parseInt(selectedScorecardId) : undefined,
           course_map_url: courseMapUrl || undefined,
+          max_group_size: maxGroupSize,
           status: 'auto',
         },
       });
@@ -625,6 +629,25 @@ export default function TournamentCreate() {
             >
               <Plus className="h-4 w-4" /> Add Course
             </Button>
+          </div>
+
+          {/* Max Group Size */}
+          <div>
+            <Label className="text-slate-300 mb-1.5 block flex items-center gap-1.5">
+              <Users className="h-4 w-4 text-emerald-400" />
+              Max Group Size
+            </Label>
+            <Input
+              type="number"
+              min={2}
+              max={10}
+              value={maxGroupSize}
+              onChange={(e) => setMaxGroupSize(Math.max(2, Math.min(10, parseInt(e.target.value) || 4)))}
+              className="bg-slate-800 border-slate-700 text-white w-24"
+            />
+            <p className="text-xs text-slate-500 mt-1">
+              Maximum number of archers per shooting group (2-10)
+            </p>
           </div>
 
           {/* Mulligans */}

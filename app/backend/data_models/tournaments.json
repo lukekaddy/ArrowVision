@@ -8,7 +8,7 @@
         },
         "user_id": {
             "type": "string",
-            "description": "User ID"
+            "description": "User ID of tournament creator"
         },
         "name": {
             "type": "string",
@@ -16,11 +16,7 @@
         },
         "date": {
             "type": "string",
-            "description": "Tournament start date"
-        },
-        "end_date": {
-            "type": "string",
-            "description": "Tournament end date, same as date for single-day events"
+            "description": "Tournament date"
         },
         "num_targets": {
             "type": "integer",
@@ -28,7 +24,7 @@
         },
         "divisions": {
             "type": "string",
-            "description": "Divisions configuration"
+            "description": "JSON string of divisions"
         },
         "status": {
             "type": "string",
@@ -36,23 +32,31 @@
         },
         "courses": {
             "type": "string",
-            "description": "Courses JSON configuration"
+            "description": "JSON string of courses"
         },
         "mulligans": {
             "type": "string",
-            "description": "Mulligans JSON configuration"
+            "description": "JSON string of mulligan config"
         },
         "location": {
             "type": "string",
             "description": "Tournament location"
         },
+        "start_time": {
+            "type": "string",
+            "description": "Tournament start time"
+        },
         "scoring_template_id": {
             "type": "integer",
-            "description": "Scoring template ID reference"
+            "description": "Scoring template ID"
         },
         "course_map_url": {
             "type": "string",
-            "description": "Course map URL"
+            "description": "Course map image URL"
+        },
+        "max_group_size": {
+            "type": "integer",
+            "description": "Maximum number of archers per group, defaults to 4"
         }
     },
     "required": [

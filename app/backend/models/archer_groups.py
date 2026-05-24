@@ -13,5 +13,7 @@ class Archer_groups(Base):
     group_number = Column(Integer, nullable=False)
     shooting_order_mode = Column(String, nullable=True)
     creator_id = Column(String, nullable=False)
+    visibility = Column(String, nullable=True)
+    invite_code = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=datetime.now)
     updated_at = Column(DateTime(timezone=True), default=datetime.now, onupdate=datetime.now)

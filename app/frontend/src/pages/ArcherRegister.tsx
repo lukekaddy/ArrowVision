@@ -4,7 +4,7 @@ import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, ArrowLeft, Loader2, Users, Search, UserPlus, User, Clock, XCircle } from 'lucide-react';
+import { CheckCircle, ArrowLeft, Loader2, Users, Search, UserPlus, Clock, XCircle, Lock, Copy, Hash } from 'lucide-react';
 
 interface TournamentDetail {
   id: number;
@@ -14,6 +14,7 @@ interface TournamentDetail {
   location?: string;
   divisions?: string;
   mulligans?: string;
+  max_group_size?: number;
 }
 
 interface CountdownTime {
@@ -57,11 +58,13 @@ interface GroupInfo {
     group_number: number;
     shooting_order_mode: string;
     creator_id: string;
+    visibility?: string;
+    invite_code?: string;
   };
   members: GroupMember[];
 }
 
-type GroupOption = 'solo' | 'join' | 'create';
+type GroupOption = 'find' | 'join_code' | 'create';
 
 export default function ArcherRegister() {
   const { id } = useParams<{ id: string }>();
@@ -82,30 +85,36 @@ export default function ArcherRegister() {
   const [purchasedMulligans, setPurchasedMulligans] = useState<Record<string, number>>({});
 
   // Group state
-  const [groupOption, setGroupOption] = useState<GroupOption>('solo');
+  const [groupOption, setGroupOption] = useState<GroupOption>('find');
   const [groupName, setGroupName] = useState('');
+  const [groupVisibility, setGroupVisibility] = useState<'public' | 'private'>('public');
   const [selectedMembers, setSelectedMembers] = useState<number[]>([]);
   const [ungroupedArchers, setUngroupedArchers] = useState<UngroupedArcher[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loadingArchers, setLoadingArchers] = useState(false);
   const [groupCreated, setGroupCreated] = useState(false);
 
-  // Join group state
+  // Find group state
   const [existingGroups, setExistingGroups] = useState<GroupInfo[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null);
   const [groupSearchQuery, setGroupSearchQuery] = useState('');
   const [joinedGroup, setJoinedGroup] = useState(false);
 
+  // Join by code state
+  const [inviteCode, setInviteCode] = useState('');
+  const [joinByCodeSuccess, setJoinByCodeSuccess] = useState(false);
+
   // Registration countdown state
   const [countdown, setCountdown] = useState<CountdownTime | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Tournament started (time-lock for groups)
+  const [tournamentStarted, setTournamentStarted] = useState(false);
+
   const getRegistrationDeadline = useCallback((t: TournamentDetail): Date | null => {
     if (!t.date) return null;
     if (!t.start_time) return null;
-    // Combine date and start_time into a full datetime
-    // date is "YYYY-MM-DD", start_time is "HH:MM" (24h format)
     const dateTimeStr = `${t.date}T${t.start_time}:00`;
     const deadline = new Date(dateTimeStr);
     if (isNaN(deadline.getTime())) return null;
@@ -133,9 +142,7 @@ export default function ArcherRegister() {
       setCountdown(null);
       return;
     }
-    // Initial calculation
     setCountdown(calculateCountdown(deadline));
-    // Update every second
     countdownIntervalRef.current = setInterval(() => {
       const cd = calculateCountdown(deadline);
       setCountdown(cd);
@@ -151,6 +158,15 @@ export default function ArcherRegister() {
   }, [tournament, getRegistrationDeadline, calculateCountdown]);
 
   const registrationClosed = countdown?.expired === true;
+
+  // Check if tournament has started (for time-lock on groups)
+  useEffect(() => {
+    if (!tournament) return;
+    const deadline = getRegistrationDeadline(tournament);
+    if (deadline) {
+      setTournamentStarted(new Date() >= deadline);
+    }
+  }, [tournament, getRegistrationDeadline]);
 
   useEffect(() => {
     const fetchTournament = async () => {
@@ -168,7 +184,7 @@ export default function ArcherRegister() {
           if (divs.length > 0) setDivision(divs[0]);
         }
 
-        // Check if user is already registered for this tournament
+        // Check if user is already registered
         if (token) {
           try {
             const myRes = await client.apiCall.invoke({
@@ -187,7 +203,7 @@ export default function ArcherRegister() {
               setAlreadyRegistered(true);
             }
           } catch {
-            // If check fails, allow registration attempt (backend will still block duplicates)
+            // If check fails, allow registration attempt
           }
         }
       } catch {
@@ -199,15 +215,15 @@ export default function ArcherRegister() {
     fetchTournament();
   }, [id, token]);
 
-  // Fetch existing groups when "join" option is selected
+  // Fetch public groups when "find" option is selected
   useEffect(() => {
-    if (groupOption !== 'join' || !id) return;
+    if (groupOption !== 'find' || !id) return;
 
     const fetchGroups = async () => {
       setLoadingGroups(true);
       try {
         const res = await client.apiCall.invoke({
-          url: `/api/v1/groups/tournament/${id}`,
+          url: `/api/v1/groups/find/${id}`,
           method: 'GET',
           data: {},
         });
@@ -249,6 +265,7 @@ export default function ArcherRegister() {
   }, [groupOption, id, token]);
 
   const divisions = tournament?.divisions?.split(',').map((d) => d.trim()) || [];
+  const maxGroupSize = tournament?.max_group_size || 4;
 
   let mulliganConfig: MulliganConfig = { enabled: false };
   try {
@@ -321,41 +338,60 @@ export default function ArcherRegister() {
       });
 
       // Handle group actions after registration
-      if (groupOption === 'join' && selectedGroupId !== null) {
-        try {
-          await client.apiCall.invoke({
-            url: '/api/v1/groups/join',
-            method: 'POST',
-            data: {
-              tournament_id: tournament.id,
-              group_id: selectedGroupId,
-            },
-            options: {
-              headers: { Authorization: `Bearer ${token}` },
-            },
-          });
-          setJoinedGroup(true);
-        } catch {
-          // Join failed but registration succeeded
-        }
-      } else if (groupOption === 'create' && selectedMembers.length > 0) {
-        try {
-          await client.apiCall.invoke({
-            url: '/api/v1/groups/create',
-            method: 'POST',
-            data: {
-              tournament_id: tournament.id,
-              group_name: groupName.trim() || undefined,
-              member_ids: selectedMembers,
-              shooting_order_mode: 'round_robin',
-            },
-            options: {
-              headers: { Authorization: `Bearer ${token}` },
-            },
-          });
-          setGroupCreated(true);
-        } catch {
-          // Group creation failed but registration succeeded
+      if (!tournamentStarted) {
+        if (groupOption === 'find' && selectedGroupId !== null) {
+          try {
+            await client.apiCall.invoke({
+              url: '/api/v1/groups/join',
+              method: 'POST',
+              data: {
+                tournament_id: tournament.id,
+                group_id: selectedGroupId,
+              },
+              options: {
+                headers: { Authorization: `Bearer ${token}` },
+              },
+            });
+            setJoinedGroup(true);
+          } catch {
+            // Join failed but registration succeeded
+          }
+        } else if (groupOption === 'join_code' && inviteCode.trim()) {
+          try {
+            await client.apiCall.invoke({
+              url: '/api/v1/groups/join-by-code',
+              method: 'POST',
+              data: {
+                invite_code: inviteCode.trim().toUpperCase(),
+              },
+              options: {
+                headers: { Authorization: `Bearer ${token}` },
+              },
+            });
+            setJoinByCodeSuccess(true);
+          } catch {
+            // Join by code failed but registration succeeded
+          }
+        } else if (groupOption === 'create' && groupName.trim()) {
+          try {
+            await client.apiCall.invoke({
+              url: '/api/v1/groups/create',
+              method: 'POST',
+              data: {
+                tournament_id: tournament.id,
+                group_name: groupName.trim(),
+                member_ids: selectedMembers,
+                shooting_order_mode: 'round_robin',
+                visibility: groupVisibility,
+              },
+              options: {
+                headers: { Authorization: `Bearer ${token}` },
+              },
+            });
+            setGroupCreated(true);
+          } catch {
+            // Group creation failed but registration succeeded
+          }
         }
       }
 
@@ -365,7 +401,6 @@ export default function ArcherRegister() {
       if (err instanceof Error) {
         message = err.message;
       }
-      // Check for duplicate registration error from backend
       if (typeof err === 'object' && err !== null && 'response' in err) {
         const resp = (err as { response?: { data?: { detail?: string } } }).response;
         if (resp?.data?.detail) {
@@ -453,7 +488,7 @@ export default function ArcherRegister() {
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 mb-4 inline-block">
               <p className="text-emerald-400 text-sm flex items-center gap-2">
                 <Users className="h-4 w-4" />
-                Group created with {selectedMembers.length} member{selectedMembers.length !== 1 ? 's' : ''}!
+                Group &quot;{groupName}&quot; created successfully!
               </p>
             </div>
           )}
@@ -462,6 +497,14 @@ export default function ArcherRegister() {
               <p className="text-emerald-400 text-sm flex items-center gap-2">
                 <Users className="h-4 w-4" />
                 Successfully joined group!
+              </p>
+            </div>
+          )}
+          {joinByCodeSuccess && (
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 mb-4 inline-block">
+              <p className="text-emerald-400 text-sm flex items-center gap-2">
+                <Hash className="h-4 w-4" />
+                Joined group via invite code!
               </p>
             </div>
           )}
@@ -638,45 +681,54 @@ export default function ArcherRegister() {
               <h3 className="text-sm font-semibold text-white">Shooting Group</h3>
             </div>
 
-            {/* 3 Option Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            {/* Time-lock banner */}
+            {tournamentStarted && (
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 mb-4 flex items-center gap-2">
+                <Lock className="h-4 w-4 text-red-400 flex-shrink-0" />
+                <p className="text-red-400 text-sm font-medium">Groups are locked — tournament has started</p>
+              </div>
+            )}
+
+            {/* 3 Tab Options */}
+            <div className={`grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4 ${tournamentStarted ? 'opacity-50 pointer-events-none' : ''}`}>
               <button
                 type="button"
                 onClick={() => {
-                  setGroupOption('solo');
-                  setSelectedGroupId(null);
+                  setGroupOption('find');
                   setSelectedMembers([]);
+                  setInviteCode('');
                 }}
                 className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${
-                  groupOption === 'solo'
+                  groupOption === 'find'
                     ? 'border-emerald-500 bg-emerald-500/10'
                     : 'border-slate-600 bg-slate-800/50 hover:border-slate-500'
                 }`}
               >
-                <User className={`h-6 w-6 ${groupOption === 'solo' ? 'text-emerald-400' : 'text-slate-400'}`} />
-                <span className={`text-sm font-medium ${groupOption === 'solo' ? 'text-emerald-400' : 'text-slate-300'}`}>
-                  Shoot Solo
+                <Search className={`h-6 w-6 ${groupOption === 'find' ? 'text-emerald-400' : 'text-slate-400'}`} />
+                <span className={`text-sm font-medium ${groupOption === 'find' ? 'text-emerald-400' : 'text-slate-300'}`}>
+                  Find Group
                 </span>
-                <span className="text-xs text-slate-500 text-center">Register individually</span>
+                <span className="text-xs text-slate-500 text-center">Browse public groups</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => {
-                  setGroupOption('join');
+                  setGroupOption('join_code');
+                  setSelectedGroupId(null);
                   setSelectedMembers([]);
                 }}
                 className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${
-                  groupOption === 'join'
+                  groupOption === 'join_code'
                     ? 'border-emerald-500 bg-emerald-500/10'
                     : 'border-slate-600 bg-slate-800/50 hover:border-slate-500'
                 }`}
               >
-                <Users className={`h-6 w-6 ${groupOption === 'join' ? 'text-emerald-400' : 'text-slate-400'}`} />
-                <span className={`text-sm font-medium ${groupOption === 'join' ? 'text-emerald-400' : 'text-slate-300'}`}>
-                  Join Group
+                <Hash className={`h-6 w-6 ${groupOption === 'join_code' ? 'text-emerald-400' : 'text-slate-400'}`} />
+                <span className={`text-sm font-medium ${groupOption === 'join_code' ? 'text-emerald-400' : 'text-slate-300'}`}>
+                  Join by Code
                 </span>
-                <span className="text-xs text-slate-500 text-center">Join an existing group</span>
+                <span className="text-xs text-slate-500 text-center">Enter invite code</span>
               </button>
 
               <button
@@ -684,6 +736,7 @@ export default function ArcherRegister() {
                 onClick={() => {
                   setGroupOption('create');
                   setSelectedGroupId(null);
+                  setInviteCode('');
                 }}
                 className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${
                   groupOption === 'create'
@@ -699,8 +752,8 @@ export default function ArcherRegister() {
               </button>
             </div>
 
-            {/* Join Existing Group Sub-flow */}
-            {groupOption === 'join' && (
+            {/* Find Group Sub-flow */}
+            {groupOption === 'find' && !tournamentStarted && (
               <div className="space-y-3 pt-3 border-t border-slate-700/50">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
@@ -721,7 +774,7 @@ export default function ArcherRegister() {
                 ) : filteredGroups.length === 0 ? (
                   <p className="text-slate-500 text-sm py-4 text-center">
                     {existingGroups.length === 0
-                      ? 'No groups available for this tournament yet.'
+                      ? 'No public groups available for this tournament yet.'
                       : 'No groups match your search.'}
                   </p>
                 ) : (
@@ -742,7 +795,7 @@ export default function ArcherRegister() {
                             {g.group.group_name}
                           </span>
                           <span className="text-xs text-slate-400 bg-slate-700/50 px-2 py-0.5 rounded">
-                            #{g.group.group_number}
+                            {g.members.length}/{maxGroupSize}
                           </span>
                         </div>
                         <div className="flex items-center gap-3 text-xs text-slate-400">
@@ -778,23 +831,89 @@ export default function ArcherRegister() {
               </div>
             )}
 
+            {/* Join by Code Sub-flow */}
+            {groupOption === 'join_code' && !tournamentStarted && (
+              <div className="space-y-3 pt-3 border-t border-slate-700/50">
+                <p className="text-sm text-slate-400">
+                  Enter the 6-character invite code shared by your group leader.
+                </p>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="text"
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value.toUpperCase().slice(0, 6))}
+                    maxLength={6}
+                    className="flex-1 h-12 px-4 rounded-lg border border-slate-600 bg-slate-800 text-white text-center text-lg font-mono tracking-widest placeholder-slate-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-colors uppercase"
+                    placeholder="ABC123"
+                  />
+                </div>
+                {inviteCode.length === 6 && (
+                  <p className="text-emerald-400 text-xs flex items-center gap-1">
+                    <CheckCircle className="h-3 w-3" />
+                    Code entered — will join group after registration
+                  </p>
+                )}
+                {inviteCode.length > 0 && inviteCode.length < 6 && (
+                  <p className="text-slate-500 text-xs">
+                    {6 - inviteCode.length} more character{6 - inviteCode.length !== 1 ? 's' : ''} needed
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Create New Group Sub-flow */}
-            {groupOption === 'create' && (
+            {groupOption === 'create' && !tournamentStarted && (
               <div className="space-y-3 pt-3 border-t border-slate-700/50">
                 <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">Group Name (optional)</label>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">Group Name *</label>
                   <input
                     type="text"
                     value={groupName}
                     onChange={(e) => setGroupName(e.target.value)}
                     className="w-full h-10 px-3 rounded-lg border border-slate-600 bg-slate-800 text-white placeholder-slate-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-colors text-sm"
                     placeholder="e.g., Team Alpha"
+                    required={groupOption === 'create'}
                   />
                 </div>
 
+                {/* Visibility Toggle */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-2">Group Visibility</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setGroupVisibility('public')}
+                      className={`flex-1 py-2.5 px-3 rounded-lg text-sm font-medium transition-all ${
+                        groupVisibility === 'public'
+                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                          : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-600'
+                      }`}
+                    >
+                      Public
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGroupVisibility('private')}
+                      className={`flex-1 py-2.5 px-3 rounded-lg text-sm font-medium transition-all ${
+                        groupVisibility === 'private'
+                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                          : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-600'
+                      }`}
+                    >
+                      Private
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {groupVisibility === 'public'
+                      ? 'Anyone can find and join this group'
+                      : 'Only accessible via invite code'}
+                  </p>
+                </div>
+
+                {/* Member Selection */}
                 <div>
                   <label className="block text-xs font-medium text-slate-400 mb-1">
-                    Select Members {selectedMembers.length > 0 && (
+                    Invite Members (optional) {selectedMembers.length > 0 && (
                       <span className="text-emerald-400">({selectedMembers.length} selected)</span>
                     )}
                   </label>

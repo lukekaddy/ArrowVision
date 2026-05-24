@@ -25,6 +25,8 @@ class Archer_groupsData(BaseModel):
     group_number: int
     shooting_order_mode: str = None
     creator_id: str
+    visibility: str = None
+    invite_code: str = None
 
 
 class Archer_groupsUpdateData(BaseModel):
@@ -34,6 +36,8 @@ class Archer_groupsUpdateData(BaseModel):
     group_number: Optional[int] = None
     shooting_order_mode: Optional[str] = None
     creator_id: Optional[str] = None
+    visibility: Optional[str] = None
+    invite_code: Optional[str] = None
 
 
 class Archer_groupsResponse(BaseModel):
@@ -44,6 +48,8 @@ class Archer_groupsResponse(BaseModel):
     group_number: int
     shooting_order_mode: Optional[str] = None
     creator_id: str
+    visibility: Optional[str] = None
+    invite_code: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

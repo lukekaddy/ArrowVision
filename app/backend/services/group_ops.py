@@ -1,10 +1,13 @@
 import logging
 import random
+import string
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from models.archer_groups import Archer_groups
 from models.tournament_archers import Tournament_archers
+from models.tournaments import Tournaments
 from models.scores import Scores
 
 logger = logging.getLogger(__name__)
@@ -16,6 +19,79 @@ class GroupOpsService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    # ---------- Helper Methods ----------
+
+    async def _generate_invite_code(self) -> str:
+        """Generate a unique 6-character uppercase alphanumeric invite code."""
+        chars = string.ascii_uppercase + string.digits
+        for _ in range(100):  # max attempts to find unique code
+            code = ''.join(random.choices(chars, k=6))
+            existing = await self.db.execute(
+                select(Archer_groups).where(Archer_groups.invite_code == code)
+            )
+            if not existing.scalar_one_or_none():
+                return code
+        # Fallback: extremely unlikely to reach here
+        return ''.join(random.choices(chars, k=8))
+
+    async def _check_tournament_locked(self, tournament_id: int) -> bool:
+        """Check if a tournament has already started (time-locked).
+        Returns True if the tournament is locked (past start time).
+        """
+        tournament = await self._get_tournament(tournament_id)
+        if not tournament:
+            return False  # Let other validation handle missing tournament
+
+        if not tournament.date:
+            return False
+
+        try:
+            # Parse date (expected format: YYYY-MM-DD)
+            tournament_date = datetime.strptime(tournament.date, "%Y-%m-%d")
+
+            # Parse start_time if available (expected format: HH:MM)
+            if tournament.start_time:
+                try:
+                    parts = tournament.start_time.split(":")
+                    tournament_date = tournament_date.replace(
+                        hour=int(parts[0]), minute=int(parts[1])
+                    )
+                except (ValueError, IndexError):
+                    pass
+
+            # Make timezone-aware (UTC)
+            tournament_date = tournament_date.replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            return now > tournament_date
+        except (ValueError, TypeError):
+            return False
+
+    async def _get_tournament(self, tournament_id: int) -> Optional[Tournaments]:
+        """Load a tournament by ID."""
+        result = await self.db.execute(
+            select(Tournaments).where(Tournaments.id == tournament_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def _get_max_group_size(self, tournament_id: int) -> int:
+        """Get the max group size for a tournament (default 4)."""
+        tournament = await self._get_tournament(tournament_id)
+        if tournament and tournament.max_group_size:
+            return tournament.max_group_size
+        return 4
+
+    async def _get_group_member_count(self, tournament_id: int, group_number: int) -> int:
+        """Count current members in a group."""
+        result = await self.db.execute(
+            select(func.count(Tournament_archers.id)).where(
+                Tournament_archers.tournament_id == tournament_id,
+                Tournament_archers.group_number == group_number,
+            )
+        )
+        return result.scalar() or 0
+
+    # ---------- Main Methods ----------
+
     async def create_group(
         self,
         tournament_id: int,
@@ -23,8 +99,16 @@ class GroupOpsService:
         member_ids: List[int],
         group_name: Optional[str] = None,
         shooting_order_mode: str = "round_robin",
+        visibility: str = "public",
     ) -> Dict[str, Any]:
         """Create a new archer group for a tournament."""
+        # Check time-lock
+        if await self._check_tournament_locked(tournament_id):
+            return {"success": False, "message": "Tournament has already started. Cannot create groups."}
+
+        # Get max group size
+        max_size = await self._get_max_group_size(tournament_id)
+
         # Get next available group_number for this tournament
         max_query = select(func.max(Archer_groups.group_number)).where(
             Archer_groups.tournament_id == tournament_id
@@ -37,6 +121,9 @@ class GroupOpsService:
         if not group_name:
             group_name = f"Group #{group_number}"
 
+        # Generate unique invite code
+        invite_code = await self._generate_invite_code()
+
         # Create the archer_groups record
         group = Archer_groups(
             tournament_id=tournament_id,
@@ -44,6 +131,8 @@ class GroupOpsService:
             group_number=group_number,
             shooting_order_mode=shooting_order_mode,
             creator_id=creator_id,
+            visibility=visibility,
+            invite_code=invite_code,
         )
         self.db.add(group)
         await self.db.flush()
@@ -60,6 +149,10 @@ class GroupOpsService:
         all_member_ids = list(set(member_ids))
         if creator_reg and creator_reg.id not in all_member_ids:
             all_member_ids.append(creator_reg.id)
+
+        # Enforce max group size on initial members
+        if len(all_member_ids) > max_size:
+            all_member_ids = all_member_ids[:max_size]
 
         # Update tournament_archers rows for all members
         members = []
@@ -80,14 +173,13 @@ class GroupOpsService:
         await self.db.refresh(group)
 
         return {
+            "success": True,
             "group": self._group_to_dict(group),
             "members": members,
         }
 
     async def get_my_groups(self, user_id: str) -> List[Dict[str, Any]]:
         """Get all groups the current user belongs to across all tournaments."""
-        from models.tournaments import Tournaments
-
         # Find all tournament_archers registrations for this user that have a group_number
         reg_query = select(Tournament_archers).where(
             Tournament_archers.user_id == user_id,
@@ -142,6 +234,10 @@ class GroupOpsService:
         user_id: str,
     ) -> Dict[str, Any]:
         """Join an existing group in a tournament."""
+        # Check time-lock
+        if await self._check_tournament_locked(tournament_id):
+            return {"success": False, "message": "Tournament has already started. Cannot join groups."}
+
         # Validate user is registered for the tournament
         reg_query = select(Tournament_archers).where(
             Tournament_archers.tournament_id == tournament_id,
@@ -168,6 +264,12 @@ class GroupOpsService:
         if not group:
             return {"success": False, "message": "Group not found"}
 
+        # Check max group size
+        max_size = await self._get_max_group_size(tournament_id)
+        current_count = await self._get_group_member_count(tournament_id, group.group_number)
+        if current_count >= max_size:
+            return {"success": False, "message": f"Group is full (max {max_size} members)"}
+
         # Update the user's registration with the group info
         registration.group_number = group.group_number
         registration.group_name = group.group_name
@@ -188,6 +290,150 @@ class GroupOpsService:
             "group": self._group_to_dict(group),
             "members": [self._archer_to_dict(m) for m in members],
         }
+
+    async def join_by_code(
+        self,
+        tournament_id: int,
+        invite_code: str,
+        user_id: str,
+    ) -> Dict[str, Any]:
+        """Join a group using an invite code."""
+        # Check time-lock
+        if await self._check_tournament_locked(tournament_id):
+            return {"success": False, "message": "Tournament has already started. Cannot join groups."}
+
+        # Find the group by invite_code and tournament_id
+        group_query = select(Archer_groups).where(
+            Archer_groups.tournament_id == tournament_id,
+            Archer_groups.invite_code == invite_code.upper(),
+        )
+        group_result = await self.db.execute(group_query)
+        group = group_result.scalar_one_or_none()
+
+        if not group:
+            return {"success": False, "message": "Invalid invite code for this tournament"}
+
+        # Validate user is registered for the tournament
+        reg_query = select(Tournament_archers).where(
+            Tournament_archers.tournament_id == tournament_id,
+            Tournament_archers.user_id == user_id,
+        )
+        reg_result = await self.db.execute(reg_query)
+        registration = reg_result.scalar_one_or_none()
+
+        if not registration:
+            return {"success": False, "message": "Not registered for this tournament"}
+
+        # Validate user is not already in a group
+        if registration.group_number is not None:
+            return {"success": False, "message": "Already in a group for this tournament"}
+
+        # Check max group size
+        max_size = await self._get_max_group_size(tournament_id)
+        current_count = await self._get_group_member_count(tournament_id, group.group_number)
+        if current_count >= max_size:
+            return {"success": False, "message": f"Group is full (max {max_size} members)"}
+
+        # Assign user to the group
+        registration.group_number = group.group_number
+        registration.group_name = group.group_name
+
+        await self.db.commit()
+        await self.db.refresh(registration)
+
+        # Get all members of the group
+        members_query = select(Tournament_archers).where(
+            Tournament_archers.tournament_id == tournament_id,
+            Tournament_archers.group_number == group.group_number,
+        ).order_by(Tournament_archers.id)
+        members_result = await self.db.execute(members_query)
+        members = members_result.scalars().all()
+
+        return {
+            "success": True,
+            "group": self._group_to_dict(group),
+            "members": [self._archer_to_dict(m) for m in members],
+        }
+
+    async def dissolve_group(
+        self,
+        tournament_id: int,
+        group_id: int,
+        user_id: str,
+    ) -> Dict[str, Any]:
+        """Dissolve a group (owner only). Clears all members and deletes the group record."""
+        # Check time-lock
+        if await self._check_tournament_locked(tournament_id):
+            return {"success": False, "message": "Tournament has already started. Cannot dissolve groups."}
+
+        # Validate the group exists and user is the creator
+        group_query = select(Archer_groups).where(
+            Archer_groups.id == group_id,
+            Archer_groups.tournament_id == tournament_id,
+        )
+        group_result = await self.db.execute(group_query)
+        group = group_result.scalar_one_or_none()
+
+        if not group:
+            return {"success": False, "message": "Group not found"}
+
+        if group.creator_id != user_id:
+            return {"success": False, "message": "Only the group creator can dissolve the group"}
+
+        # Clear all members' group fields
+        members_query = select(Tournament_archers).where(
+            Tournament_archers.tournament_id == tournament_id,
+            Tournament_archers.group_number == group.group_number,
+        )
+        members_result = await self.db.execute(members_query)
+        member_rows = members_result.scalars().all()
+
+        for member in member_rows:
+            member.group_number = None
+            member.group_name = None
+
+        # Delete the archer_groups record
+        await self.db.delete(group)
+        await self.db.commit()
+
+        return {"success": True, "message": "Group dissolved successfully"}
+
+    async def find_public_groups(self, tournament_id: int) -> List[Dict[str, Any]]:
+        """Find public groups for a tournament that have available space."""
+        max_size = await self._get_max_group_size(tournament_id)
+
+        # Get all public groups for this tournament
+        groups_query = select(Archer_groups).where(
+            Archer_groups.tournament_id == tournament_id,
+            Archer_groups.visibility == "public",
+        ).order_by(Archer_groups.group_number)
+        groups_result = await self.db.execute(groups_query)
+        groups = groups_result.scalars().all()
+
+        result = []
+        for group in groups:
+            # Count members
+            member_count = await self._get_group_member_count(tournament_id, group.group_number)
+
+            # Only include groups with available space
+            if member_count < max_size:
+                # Get members
+                members_query = select(Tournament_archers).where(
+                    Tournament_archers.tournament_id == tournament_id,
+                    Tournament_archers.group_number == group.group_number,
+                ).order_by(Tournament_archers.id)
+                members_result = await self.db.execute(members_query)
+                members = members_result.scalars().all()
+
+                result.append({
+                    "group": self._group_to_dict(group),
+                    "members": [self._archer_to_dict(m) for m in members],
+                    "member_count": member_count,
+                    "max_size": max_size,
+                    "available_spots": max_size - member_count,
+                })
+
+        return result
 
     async def get_tournament_groups(self, tournament_id: int) -> List[Dict[str, Any]]:
         """Get all groups for a tournament with their members."""
@@ -226,6 +472,10 @@ class GroupOpsService:
 
     async def leave_group(self, tournament_id: int, user_id: str) -> Dict[str, Any]:
         """Remove a user from their group in a tournament."""
+        # Check time-lock
+        if await self._check_tournament_locked(tournament_id):
+            return {"success": False, "message": "Tournament has already started. Cannot leave groups."}
+
         # Find user's registration
         reg_query = select(Tournament_archers).where(
             Tournament_archers.tournament_id == tournament_id,
@@ -361,6 +611,8 @@ class GroupOpsService:
 
         return {"success": True, "group": self._group_to_dict(group)}
 
+    # ---------- Dict Helpers ----------
+
     def _group_to_dict(self, g: Archer_groups) -> Dict:
         return {
             "id": g.id,
@@ -369,6 +621,8 @@ class GroupOpsService:
             "group_number": g.group_number,
             "shooting_order_mode": g.shooting_order_mode,
             "creator_id": g.creator_id,
+            "visibility": g.visibility,
+            "invite_code": g.invite_code,
             "created_at": g.created_at.isoformat() if g.created_at else None,
             "updated_at": g.updated_at.isoformat() if g.updated_at else None,
         }

@@ -30,8 +30,10 @@ class TournamentsData(BaseModel):
     courses: str = None
     mulligans: str = None
     location: str = None
+    start_time: str = None
     scoring_template_id: int = None
     course_map_url: str = None
+    max_group_size: int = None
 
 
 class TournamentsUpdateData(BaseModel):
@@ -44,8 +46,10 @@ class TournamentsUpdateData(BaseModel):
     courses: Optional[str] = None
     mulligans: Optional[str] = None
     location: Optional[str] = None
+    start_time: Optional[str] = None
     scoring_template_id: Optional[int] = None
     course_map_url: Optional[str] = None
+    max_group_size: Optional[int] = None
 
 
 class TournamentsResponse(BaseModel):
@@ -60,8 +64,10 @@ class TournamentsResponse(BaseModel):
     courses: Optional[str] = None
     mulligans: Optional[str] = None
     location: Optional[str] = None
+    start_time: Optional[str] = None
     scoring_template_id: Optional[int] = None
     course_map_url: Optional[str] = None
+    max_group_size: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
