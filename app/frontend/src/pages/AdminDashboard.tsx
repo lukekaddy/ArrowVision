@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Play, Square, Download, Edit2, Check, MapPin, Trophy } from 'lucide-react';
+import { Play, Square, Download, Edit2, Check, MapPin, Trophy, ClipboardList, Plus } from 'lucide-react';
 
 interface Archer {
   id: number;
@@ -179,9 +179,53 @@ export default function AdminDashboard() {
             <div className="rounded-2xl border border-slate-700/50 bg-slate-900/80 p-6">
               <h1 className="text-3xl font-bold text-white mb-2">Admin Dashboard</h1>
               <p className="text-slate-400">
-                Select a tournament to open the full tournament control center.
+                Manage tournaments, scorecards, archers, scores, and event operations from one admin control center.
               </p>
             </div>
+
+            <section>
+              <h2 className="text-xl font-semibold text-white mb-4">Admin Overview</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Link
+                  to="/create-tournament"
+                  className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-5 hover:bg-emerald-500/20 transition-all group"
+                >
+                  <div className="h-12 w-12 rounded-lg bg-emerald-500/20 flex items-center justify-center mb-4">
+                    <Plus className="h-6 w-6 text-emerald-400" />
+                  </div>
+                  <h3 className="text-white font-semibold group-hover:text-emerald-400 transition-colors">
+                    Create Tournament
+                  </h3>
+                  <p className="text-sm text-slate-400 mt-1">Set up a new tournament event.</p>
+                </Link>
+
+                <Link
+                  to="/create-scorecard"
+                  className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-5 hover:bg-amber-500/20 transition-all group"
+                >
+                  <div className="h-12 w-12 rounded-lg bg-amber-500/20 flex items-center justify-center mb-4">
+                    <ClipboardList className="h-6 w-6 text-amber-400" />
+                  </div>
+                  <h3 className="text-white font-semibold group-hover:text-amber-400 transition-colors">
+                    Create Scorecard
+                  </h3>
+                  <p className="text-sm text-slate-400 mt-1">Design a new scoring template.</p>
+                </Link>
+
+                <Link
+                  to="/create-scorecard"
+                  className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-5 hover:bg-blue-500/20 transition-all group"
+                >
+                  <div className="h-12 w-12 rounded-lg bg-blue-500/20 flex items-center justify-center mb-4">
+                    <Edit2 className="h-6 w-6 text-blue-400" />
+                  </div>
+                  <h3 className="text-white font-semibold group-hover:text-blue-400 transition-colors">
+                    Edit Scorecards
+                  </h3>
+                  <p className="text-sm text-slate-400 mt-1">Update existing scorecard templates.</p>
+                </Link>
+              </div>
+            </section>
 
             <section>
               <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
@@ -200,16 +244,13 @@ export default function AdminDashboard() {
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {tournaments.map((item) => (
-                    <Link
+                    <div
                       key={item.id}
-                      to={`/admin?tournamentId=${item.id}`}
-                      className="block rounded-xl border border-slate-700/50 bg-slate-800/50 p-5 hover:border-emerald-500/40 hover:bg-slate-800 transition-all"
+                      className="rounded-xl border border-slate-700/50 bg-slate-800/50 p-5 hover:border-emerald-500/40 hover:bg-slate-800 transition-all"
                     >
-                      <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start justify-between gap-4 mb-4">
                         <div>
-                          <h3 className="text-lg font-semibold text-white hover:text-emerald-400 transition-colors">
-                            {item.name}
-                          </h3>
+                          <h3 className="text-lg font-semibold text-white">{item.name}</h3>
                           <p className="text-sm text-slate-400 mt-1">
                             {item.date} {item.location ? `· ${item.location}` : ''}
                           </p>
@@ -218,7 +259,24 @@ export default function AdminDashboard() {
                           {item.status || 'auto'}
                         </span>
                       </div>
-                    </Link>
+                      <div className="flex flex-wrap gap-2">
+                        <Link to={`/admin?tournamentId=${item.id}`}>
+                          <Button size="sm" className="bg-emerald-500 hover:bg-emerald-600 text-white">
+                            Open Dashboard
+                          </Button>
+                        </Link>
+                        <Link to={`/edit-tournament/${item.id}`}>
+                          <Button size="sm" variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700/50 gap-1">
+                            <Edit2 className="h-3.5 w-3.5" /> Edit Tournament
+                          </Button>
+                        </Link>
+                        <Link to={`/create-scorecard?tournament_id=${item.id}`}>
+                          <Button size="sm" variant="outline" className="border-amber-500/50 text-amber-400 hover:bg-amber-500/10 gap-1">
+                            <ClipboardList className="h-3.5 w-3.5" /> Create/Edit Scorecard
+                          </Button>
+                        </Link>
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}
@@ -244,6 +302,21 @@ export default function AdminDashboard() {
                 )}
               </div>
               <div className="flex gap-2 flex-wrap">
+                <Link to="/create-tournament">
+                  <Button variant="outline" className="border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10 gap-1">
+                    <Plus className="h-4 w-4" /> Create Tournament
+                  </Button>
+                </Link>
+                <Link to={`/edit-tournament/${tournament.id}`}>
+                  <Button variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700/50 gap-1">
+                    <Edit2 className="h-4 w-4" /> Edit Tournament
+                  </Button>
+                </Link>
+                <Link to={`/create-scorecard?tournament_id=${tournament.id}`}>
+                  <Button variant="outline" className="border-amber-500/50 text-amber-400 hover:bg-amber-500/10 gap-1">
+                    <ClipboardList className="h-4 w-4" /> Create/Edit Scorecards
+                  </Button>
+                </Link>
                 {tournament.status !== 'active' && (
                   <Button onClick={() => updateStatus('active')} className="bg-emerald-500 hover:bg-emerald-600 text-white gap-1">
                     <Play className="h-4 w-4" /> Start
