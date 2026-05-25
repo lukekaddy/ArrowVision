@@ -7,9 +7,12 @@ import { Label } from '@/components/ui/label';
 import { ArrowLeft, Shield, Target, Loader2 } from 'lucide-react';
 
 export default function AuthPage() {
-  const [searchParams] = useSearchParams();
-  const roleParam = searchParams.get('role') || 'user';
-  const role = roleParam === 'admin' ? 'admin' : 'user';
+  const roleParam = searchParams.get('role');
+
+const role: 'admin' | 'archer' =
+  roleParam === 'admin' || roleParam === 'archer'
+    ? roleParam
+    : 'archer';
 
   const [activeTab, setActiveTab] = useState<'signin' | 'register'>('signin');
   const [error, setError] = useState('');
@@ -26,12 +29,12 @@ export default function AuthPage() {
   const navigate = useNavigate();
 
   const handleSuccess = (userRole: string) => {
-    if (userRole === 'admin') {
-      navigate('/', { replace: true });
-    } else {
-      navigate('/archer', { replace: true });
-    }
-  };
+  if (userRole === 'admin') {
+    navigate('/admin', { replace: true });
+  } else {
+    navigate('/archer', { replace: true });
+  }
+};
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
