@@ -1,107 +1,191 @@
-import React, { createContext, useContext, useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { getAPIBaseURL } from '@/lib/config';
 
-interface AuthUser {
-  id: string
-  email: string
+const TOKEN_STORAGE_KEY = 'arrowlive_token';
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  phone?: string | null;
+  role: 'admin' | 'archer' | string;
 }
 
 interface RegisterData {
-  email: string
-  password: string
-  first_name?: string
-  last_name?: string
-  phone?: string
-  role?: string
+  email: string;
+  password: string;
+  first_name?: string;
+  last_name?: string;
+  phone?: string;
+  role?: 'admin' | 'archer' | string;
 }
 
 interface AuthContextType {
-  user: AuthUser | null
-  loading: boolean
-  isAuthenticated: boolean
-  login: (email: string, password: string) => Promise<AuthUser>
-  register: (data: RegisterData) => Promise<AuthUser>
-  logout: () => Promise<void>
+  user: AuthUser | null;
+  token: string | null;
+  loading: boolean;
+  isAuthenticated: boolean;
+  isAdmin: boolean;
+  login: (email: string, password: string) => Promise<AuthUser>;
+  register: (data: RegisterData) => Promise<AuthUser>;
+  logout: () => Promise<void>;
+  refreshUser: () => Promise<AuthUser | null>;
+  refreshRole: () => Promise<AuthUser | null>;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
+  token: null,
   loading: true,
   isAuthenticated: false,
-  login: async () => { throw new Error('Not initialized') },
-  register: async () => { throw new Error('Not initialized') },
+  isAdmin: false,
+  login: async () => {
+    throw new Error('Not initialized');
+  },
+  register: async () => {
+    throw new Error('Not initialized');
+  },
   logout: async () => {},
-})
+  refreshUser: async () => null,
+  refreshRole: async () => null,
+});
+
+async function parseAuthResponse(response: Response) {
+  const contentType = response.headers.get('content-type') || '';
+  const body = contentType.includes('application/json')
+    ? await response.json()
+    : await response.text();
+
+  if (!response.ok) {
+    const detail =
+      typeof body === 'object' && body !== null && 'detail' in body
+        ? String(body.detail)
+        : 'Authentication request failed';
+    throw new Error(detail);
+  }
+
+  return body;
+}
+
+function authUrl(path: string) {
+  return `${getAPIBaseURL()}/api/v1/auth${path}`;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [token, setToken] = useState<string | null>(() =>
+    localStorage.getItem(TOKEN_STORAGE_KEY)
+  );
+  const [loading, setLoading] = useState(true);
+
+  const clearSession = () => {
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+    setToken(null);
+    setUser(null);
+  };
+
+  const fetchMe = async (jwtToken: string): Promise<AuthUser> => {
+    const response = await fetch(authUrl('/me'), {
+      headers: {
+        Authorization: `Bearer ${jwtToken}`,
+      },
+    });
+    return parseAuthResponse(response);
+  };
+
+  const storeSession = async (jwtToken: string): Promise<AuthUser> => {
+    localStorage.setItem(TOKEN_STORAGE_KEY, jwtToken);
+    setToken(jwtToken);
+    const currentUser = await fetchMe(jwtToken);
+    setUser(currentUser);
+    return currentUser;
+  };
+
+  const refreshUser = async () => {
+    const jwtToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (!jwtToken) {
+      clearSession();
+      return null;
+    }
+
+    try {
+      const currentUser = await fetchMe(jwtToken);
+      setToken(jwtToken);
+      setUser(currentUser);
+      return currentUser;
+    } catch (error) {
+      clearSession();
+      throw error;
+    }
+  };
 
   useEffect(() => {
     const init = async () => {
-      const { data } = await supabase.auth.getUser()
-      setUser(data.user ? { id: data.user.id, email: data.user.email! } : null)
-      setLoading(false)
-    }
+      try {
+        await refreshUser();
+      } catch {
+        // Invalid or expired JWTs are cleared by refreshUser.
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    init()
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      const u = session?.user
-      setUser(u ? { id: u.id, email: u.email! } : null)
-    })
-
-    return () => listener.subscription.unsubscribe()
-  }, [])
+    init();
+  }, []);
 
   const login = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (error) throw error
-
-    return {
-      id: data.user!.id,
-      email: data.user!.email!,
-    }
-  }
+    const response = await fetch(authUrl('/login'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await parseAuthResponse(response);
+    return storeSession(data.token);
+  };
 
   const register = async (data: RegisterData) => {
-    const { data: res, error } = await supabase.auth.signUp({
-      email: data.email,
-      password: data.password,
-    })
-
-    if (error) throw error
-
-    return {
-      id: res.user!.id,
-      email: res.user!.email!,
-    }
-  }
+    const role = data.role === 'admin' ? 'admin' : 'archer';
+    const endpoint = role === 'admin' ? '/register-admin' : '/register-archer';
+    const response = await fetch(authUrl(endpoint), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: data.email,
+        password: data.password,
+        first_name: data.first_name || '',
+        last_name: data.last_name || '',
+        phone: data.phone || '',
+      }),
+    });
+    const result = await parseAuthResponse(response);
+    return storeSession(result.token);
+  };
 
   const logout = async () => {
-    await supabase.auth.signOut()
-  }
+    clearSession();
+  };
 
   return (
     <AuthContext.Provider
       value={{
         user,
+        token,
         loading,
         isAuthenticated: !!user,
+        isAdmin: user?.role === 'admin',
         login,
         register,
         logout,
+        refreshUser,
+        refreshRole: refreshUser,
       }}
     >
       {children}
     </AuthContext.Provider>
-  )
+  );
 }
 
 export function useAuth() {
-  return useContext(AuthContext)
+  return useContext(AuthContext);
 }

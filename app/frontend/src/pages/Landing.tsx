@@ -52,7 +52,7 @@ export default function Landing() {
 
           {/* Archer Card */}
           <Link
-            to="/auth?role=user"
+            to="/auth?role=archer"
             className="group relative rounded-2xl border border-amber-500/30 bg-slate-900/80 backdrop-blur-sm p-8 hover:border-amber-500/60 hover:bg-amber-500/5 transition-all duration-300"
           >
             <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-amber-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />

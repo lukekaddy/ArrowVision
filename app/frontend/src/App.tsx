@@ -27,6 +27,7 @@ const queryClient = new QueryClient();
 const AppRoutes = () => (
   <Routes>
     <Route path="/" element={<Index />} />
+    <Route path="/admin" element={<Index />} />
     <Route path="/landing" element={<Landing />} />
     <Route path="/auth" element={<AuthPage />} />
     <Route path="/forgot-password" element={<ForgotPassword />} />

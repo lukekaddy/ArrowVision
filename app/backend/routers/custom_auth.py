@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -15,7 +16,7 @@ from services.custom_users import Custom_usersService
 logger = logging.getLogger(__name__)
 
 # JWT Configuration
-SECRET_KEY = "bullseye-labs-secret-key-2024"
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "bullseye-labs-secret-key-2024")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_DAYS = 7
 
@@ -287,3 +288,9 @@ async def login(
             role=user.role,
         ),
     )
+
+
+@router.get("/me", response_model=UserInfo)
+async def get_me(current_user: UserInfo = Depends(get_current_custom_user)):
+    """Return the current JWT-authenticated user."""
+    return current_user

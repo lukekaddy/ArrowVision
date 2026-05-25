@@ -48,7 +48,7 @@ interface SavedScorecard {
 }
 
 export default function TournamentCreate() {
-  const { user, login, token } = useAuth();
+  const { user, token } = useAuth();
   const navigate = useNavigate();
   const client = getClient();
   const [saving, setSaving] = useState(false);
@@ -113,7 +113,7 @@ export default function TournamentCreate() {
           <Trophy className="h-16 w-16 text-slate-600 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-white mb-3">Sign In Required</h2>
           <p className="text-slate-400 mb-6">You need to sign in to create a tournament.</p>
-          <Button onClick={login} className="bg-emerald-500 hover:bg-emerald-600 text-white">
+          <Button onClick={() => navigate('/auth?role=admin')} className="bg-emerald-500 hover:bg-emerald-600 text-white">
             Sign In
           </Button>
         </div>
@@ -215,7 +215,7 @@ export default function TournamentCreate() {
         max_group_size: maxGroupSize,
         status: 'auto',
       };
-      // Use apiCall with explicit token to avoid SDK OIDC auth issues on mobile Safari
+      // Use apiCall with the FastAPI JWT from localStorage.
       const res = await client.apiCall.invoke({
         url: '/api/v1/tournament/create',
         method: 'POST',

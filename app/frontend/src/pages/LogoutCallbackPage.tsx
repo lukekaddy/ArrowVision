@@ -3,8 +3,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 
 const LogoutCallbackPage: React.FC = () => {
   useEffect(() => {
-    // The OIDC provider has logged out the user and redirected here
-    // We can redirect to the home page or show a logout success message
+    // JWT logout is handled client-side; redirect after confirming logout.
     setTimeout(() => {
       window.location.href = '/';
     }, 2000);

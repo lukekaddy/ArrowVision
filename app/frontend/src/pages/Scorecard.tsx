@@ -98,7 +98,7 @@ interface ShootingOrderEntry {
 type ReplayModalState = 'idle' | 'loading' | 'ready' | 'error';
 
 export default function Scorecard() {
-  const { user, token, login } = useAuth();
+  const { user, token } = useAuth();
   const client = getClient();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();

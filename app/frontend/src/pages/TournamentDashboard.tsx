@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
@@ -45,8 +45,9 @@ interface TournamentInfo {
 
 export default function TournamentDashboard() {
   const { id } = useParams<{ id: string }>();
-  const { user, login } = useAuth();
+  const { user } = useAuth();
   const client = getClient();
+  const navigate = useNavigate();
   const [tournament, setTournament] = useState<TournamentInfo | null>(null);
   const [archers, setArchers] = useState<Archer[]>([]);
   const [scores, setScores] = useState<Score[]>([]);
@@ -130,7 +131,7 @@ export default function TournamentDashboard() {
       <Layout>
         <div className="max-w-md mx-auto px-4 py-20 text-center">
           <h2 className="text-2xl font-bold text-white mb-3">Sign In Required</h2>
-          <Button onClick={login} className="bg-emerald-500 hover:bg-emerald-600 text-white">Sign In</Button>
+          <Button onClick={() => navigate('/auth?role=admin')} className="bg-emerald-500 hover:bg-emerald-600 text-white">Sign In</Button>
         </div>
       </Layout>
     );

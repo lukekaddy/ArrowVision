@@ -63,7 +63,7 @@ export default function Index() {
       return;
     }
     if (user) {
-      if (user.role === 'user') {
+      if (user.role === 'archer') {
         navigate('/archer', { replace: true });
       }
     }
