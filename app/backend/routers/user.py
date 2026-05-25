@@ -1,12 +1,9 @@
 from typing import Optional
 
-from core.database import get_db
 from dependencies.auth import get_current_user
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from schemas.auth import UserResponse
-from services.user import UserService
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
@@ -18,28 +15,21 @@ class UpdateProfileRequest(BaseModel):
 
 
 @router.get("/profile", response_model=UserResponse)
-async def get_profile(db: AsyncSession = Depends(get_db), current_user: UserResponse = Depends(get_current_user)):
-    """Get current user profile."""
-    profile = await UserService.get_user_profile(db, current_user.id)
-    if not profile:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User profile not found")
-    return profile
+async def get_profile(current_user: UserResponse = Depends(get_current_user)):
+    """Return the Supabase-authenticated user profile context."""
+    return current_user
 
 
 @router.put("/profile", response_model=UserResponse)
 async def update_profile(
     profile_data: UpdateProfileRequest,
-    db: AsyncSession = Depends(get_db),
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """Update current user profile."""
-    profile = await UserService.update_user_profile(
-        db,
-        current_user.id,
-        first_name=profile_data.first_name,
-        last_name=profile_data.last_name,
-        phone=profile_data.phone,
+    """Profile writes belong in Supabase; echo merged context for compatibility."""
+    return current_user.model_copy(
+        update={
+            "first_name": profile_data.first_name if profile_data.first_name is not None else current_user.first_name,
+            "last_name": profile_data.last_name if profile_data.last_name is not None else current_user.last_name,
+            "phone": profile_data.phone if profile_data.phone is not None else current_user.phone,
+        }
     )
-    if not profile:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User profile not found")
-    return profile

@@ -1,10 +1,10 @@
 # Frontend API Authentication
 
-This project uses the FastAPI JWT authentication endpoints as the single auth source of truth.
+This project uses Supabase as the only authentication and user identity provider.
 
-- Register: `POST /api/v1/auth/register` with `email`, `password`, and `role` (`admin` or `archer`).
-- Login: `POST /api/v1/auth/login` returns `access_token` plus the authenticated user object.
-- Current user: `GET /api/v1/auth/me` with `Authorization: Bearer <access_token>`.
-- The frontend stores the JWT in `localStorage` and sends it as a bearer token for protected API calls.
+- Login and signup use the Supabase JavaScript client.
+- Role comes from Supabase user metadata or the `profiles.role` field.
+- The frontend may forward the Supabase access token to FastAPI business APIs that need user context.
+- FastAPI does not provide login, signup, or a parallel auth system.
 
-Do not add SDK auth redirects or separate auth routers.
+Do not add FastAPI login/register endpoints or SDK auth redirects.

@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { getAPIBaseURL } from '@/lib/config';
+import type { Session, User } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase';
 
-const TOKEN_STORAGE_KEY = 'arrowlive_token';
+export type AuthRole = 'admin' | 'archer';
 
 export interface AuthUser {
   id: string;
@@ -9,7 +10,7 @@ export interface AuthUser {
   first_name?: string;
   last_name?: string;
   phone?: string | null;
-  role: 'admin' | 'archer' | string;
+  role: AuthRole;
 }
 
 interface RegisterData {
@@ -18,7 +19,7 @@ interface RegisterData {
   first_name?: string;
   last_name?: string;
   phone?: string;
-  role?: 'admin' | 'archer' | string;
+  role?: AuthRole | string;
 }
 
 interface AuthContextType {
@@ -51,122 +52,151 @@ const AuthContext = createContext<AuthContextType>({
   refreshRole: async () => null,
 });
 
-async function parseAuthResponse(response: Response) {
-  const contentType = response.headers.get('content-type') || '';
-  const body = contentType.includes('application/json')
-    ? await response.json()
-    : await response.text();
+function normalizeRole(role: unknown): AuthRole {
+  return role === 'admin' ? 'admin' : 'archer';
+}
 
-  if (!response.ok) {
-    const detail =
-      typeof body === 'object' && body !== null && 'detail' in body
-        ? String(body.detail)
-        : 'Authentication request failed';
-    throw new Error(detail);
+async function getRoleFromProfile(userId: string): Promise<AuthRole | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) {
+    return null;
   }
 
-  return body;
+  return data?.role ? normalizeRole(data.role) : null;
 }
 
-function authUrl(path: string) {
-  return `${getAPIBaseURL()}/api/v1/auth${path}`;
-}
+async function resolveAuthUser(supabaseUser: User): Promise<AuthUser> {
+  const metadata = supabaseUser.user_metadata || {};
+  const profileRole = await getRoleFromProfile(supabaseUser.id);
+  const role = profileRole || normalizeRole(metadata.role);
 
-function normalizeUser(user: AuthUser): AuthUser {
-  return { ...user, id: String(user.id) };
+  return {
+    id: supabaseUser.id,
+    email: supabaseUser.email || '',
+    first_name: metadata.first_name || metadata.firstName || '',
+    last_name: metadata.last_name || metadata.lastName || '',
+    phone: metadata.phone || null,
+    role,
+  };
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [token, setToken] = useState<string | null>(() =>
-    localStorage.getItem(TOKEN_STORAGE_KEY)
-  );
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const clearSession = () => {
-    localStorage.removeItem(TOKEN_STORAGE_KEY);
-    setToken(null);
-    setUser(null);
-  };
+  const applySession = async (session: Session | null) => {
+    setToken(session?.access_token || null);
 
-  const fetchMe = async (jwtToken: string): Promise<AuthUser> => {
-    const response = await fetch(authUrl('/me'), {
-      headers: {
-        Authorization: `Bearer ${jwtToken}`,
-      },
-    });
-    return normalizeUser(await parseAuthResponse(response));
-  };
+    if (!session?.user) {
+      setUser(null);
+      return null;
+    }
 
-  const storeSession = async (jwtToken: string): Promise<AuthUser> => {
-    localStorage.setItem(TOKEN_STORAGE_KEY, jwtToken);
-    setToken(jwtToken);
-    const currentUser = await fetchMe(jwtToken);
+    const currentUser = await resolveAuthUser(session.user);
     setUser(currentUser);
     return currentUser;
   };
 
   const refreshUser = async () => {
-    const jwtToken = localStorage.getItem(TOKEN_STORAGE_KEY);
-    if (!jwtToken) {
-      clearSession();
-      return null;
-    }
-
-    try {
-      const currentUser = await fetchMe(jwtToken);
-      setToken(jwtToken);
-      setUser(currentUser);
-      return currentUser;
-    } catch (error) {
-      clearSession();
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      setUser(null);
+      setToken(null);
       throw error;
     }
+
+    return applySession(data.session);
   };
 
   useEffect(() => {
+    let mounted = true;
+
     const init = async () => {
       try {
-        await refreshUser();
-      } catch {
-        // Invalid or expired JWTs are cleared by refreshUser.
+        const { data } = await supabase.auth.getSession();
+        if (mounted) {
+          await applySession(data.session);
+        }
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
     init();
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      applySession(session).finally(() => setLoading(false));
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
-    const response = await fetch(authUrl('/login'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
     });
-    const data = await parseAuthResponse(response);
-    return storeSession(data.access_token);
+
+    if (error) {
+      throw error;
+    }
+
+    const currentUser = await applySession(data.session);
+    if (!currentUser) {
+      throw new Error('Login did not return a Supabase session.');
+    }
+    return currentUser;
   };
 
   const register = async (data: RegisterData) => {
-    const response = await fetch(authUrl('/register'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: data.email,
-        password: data.password,
-        role: data.role === 'admin' ? 'admin' : 'archer',
-        first_name: data.first_name || '',
-        last_name: data.last_name || '',
-        phone: data.phone || '',
-      }),
+    const role = normalizeRole(data.role);
+    const { data: response, error } = await supabase.auth.signUp({
+      email: data.email,
+      password: data.password,
+      options: {
+        data: {
+          first_name: data.first_name || '',
+          last_name: data.last_name || '',
+          phone: data.phone || '',
+          role,
+        },
+      },
     });
-    const result = await parseAuthResponse(response);
-    return storeSession(result.access_token);
+
+    if (error) {
+      throw error;
+    }
+
+    if (response.session) {
+      const currentUser = await applySession(response.session);
+      if (!currentUser) {
+        throw new Error('Registration did not return a Supabase session.');
+      }
+      return currentUser;
+    }
+
+    if (response.user) {
+      throw new Error('Registration submitted. Please check your email to confirm your Supabase account before signing in.');
+    }
+
+    throw new Error('Registration did not return a user.');
   };
 
   const logout = async () => {
-    clearSession();
+    await supabase.auth.signOut();
+    setUser(null);
+    setToken(null);
   };
 
   return (

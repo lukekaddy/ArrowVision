@@ -160,7 +160,7 @@ async def create_tournament(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new tournament using FastAPI JWT auth"""
+    """Create a new tournament using Supabase session context"""
     service = TournamentOpsService(db)
     try:
         result = await service.create_tournament(data.model_dump(), user_id=str(current_user.id))

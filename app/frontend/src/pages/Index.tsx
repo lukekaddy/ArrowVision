@@ -50,7 +50,7 @@ function parseCourses(coursesStr?: string): CourseConfig[] {
 }
 
 export default function Index() {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { user, token, isAuthenticated, loading } = useAuth();
   const navigate = useNavigate();
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [loadingTournaments, setLoadingTournaments] = useState(true);
@@ -345,12 +345,11 @@ export default function Index() {
                           e.preventDefault();
                           e.stopPropagation();
                           if (window.confirm(`Are you sure you want to delete "${t.name}"? This action cannot be undone.`)) {
-                            const storedToken = localStorage.getItem('arrowlive_token');
                             client.apiCall.invoke({
                               url: `/api/v1/tournament/delete/${t.id}`,
                               method: 'DELETE',
                               data: {},
-                              ...(storedToken ? { options: { headers: { Authorization: `Bearer ${storedToken}` } } } : {}),
+                              ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
                             }).then(() => {
                               setTournaments((prev) => prev.filter((tour) => tour.id !== t.id));
                             }).catch(() => {

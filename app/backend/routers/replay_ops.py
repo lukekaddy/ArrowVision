@@ -188,7 +188,7 @@ async def get_upload_url(
 ):
     """Get a presigned upload URL for replay video storage.
     
-    Uses server-side storage credentials, using the unified FastAPI JWT auth flow.
+    Uses server-side storage credentials, using the Supabase session context.
     """
     try:
         service = StorageService()
@@ -211,7 +211,7 @@ async def get_download_url(
 ):
     """Get a presigned download URL for replay video retrieval.
     
-    Uses server-side storage credentials, using the unified FastAPI JWT auth flow.
+    Uses server-side storage credentials, using the Supabase session context.
     """
     try:
         service = StorageService()

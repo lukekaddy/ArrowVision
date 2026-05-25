@@ -46,7 +46,7 @@ interface TournamentInfo {
 export default function AdminDashboard() {
   const [searchParams] = useSearchParams();
   const id = searchParams.get('tournamentId');
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const client = getClient();
   const navigate = useNavigate();
   const [tournament, setTournament] = useState<TournamentInfo | null>(null);
@@ -110,6 +110,12 @@ export default function AdminDashboard() {
     fetchData();
   }, [id]);
 
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/auth?role=admin', { replace: true });
+    }
+  }, [authLoading, user, navigate]);
+
 
 
   const updateStatus = async (status: string) => {
@@ -157,6 +163,17 @@ export default function AdminDashboard() {
   };
 
   const getArcherName = (archerId: number) => archers.find((a) => a.id === archerId)?.archer_name || `Archer #${archerId}`;
+
+  if (authLoading || !user) {
+    return (
+      <Layout>
+        <div className="max-w-md mx-auto px-4 py-20 text-center">
+          <div className="h-8 w-8 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-slate-400">Redirecting to sign in...</p>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
