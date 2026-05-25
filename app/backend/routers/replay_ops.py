@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from core.database import get_db
-from routers.custom_auth import get_current_custom_user, UserInfo
+from dependencies.auth import get_current_user
+from schemas.auth import UserResponse
 from services.replay_ops import ReplayOpsService
 from services.storage import StorageService
 from schemas.storage import ObjectRequest
@@ -55,7 +56,7 @@ class DownloadUrlResponse(BaseModel):
 @router.post("/save")
 async def save_replay(
     data: SaveReplayRequest,
-    current_user: UserInfo = Depends(get_current_custom_user),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Save replay video metadata after upload.
@@ -157,7 +158,7 @@ async def get_replay(
     archer_id: int = Query(...),
     course_number: int = Query(...),
     target_number: int = Query(...),
-    current_user: UserInfo = Depends(get_current_custom_user),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get replay video object_key for a specific archer/target."""
@@ -183,11 +184,11 @@ async def get_replay(
 @router.post("/get-upload-url", response_model=UploadUrlResponse)
 async def get_upload_url(
     data: StorageUrlRequest,
-    current_user: UserInfo = Depends(get_current_custom_user),
+    current_user: UserResponse = Depends(get_current_user),
 ):
     """Get a presigned upload URL for replay video storage.
     
-    Uses server-side storage credentials, bypassing OIDC auth requirement.
+    Uses server-side storage credentials, using the unified FastAPI JWT auth flow.
     """
     try:
         service = StorageService()
@@ -206,11 +207,11 @@ async def get_upload_url(
 @router.post("/get-download-url", response_model=DownloadUrlResponse)
 async def get_download_url(
     data: StorageUrlRequest,
-    current_user: UserInfo = Depends(get_current_custom_user),
+    current_user: UserResponse = Depends(get_current_user),
 ):
     """Get a presigned download URL for replay video retrieval.
     
-    Uses server-side storage credentials, bypassing OIDC auth requirement.
+    Uses server-side storage credentials, using the unified FastAPI JWT auth flow.
     """
     try:
         service = StorageService()

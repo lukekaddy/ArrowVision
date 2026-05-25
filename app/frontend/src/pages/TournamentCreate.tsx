@@ -448,7 +448,7 @@ export default function TournamentCreate() {
                 try {
                   const objectKey = `maps/${Date.now()}-${file.name}`;
                   const bucketName = 'course-maps';
-                  // Use replays endpoints which use custom auth (get_current_custom_user)
+                  // Use replays endpoints with the FastAPI JWT auth token
                   const uploadRes = await client.apiCall.invoke({
                     url: '/api/v1/replays/get-upload-url',
                     method: 'POST',

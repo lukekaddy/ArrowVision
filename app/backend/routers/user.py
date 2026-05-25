@@ -3,7 +3,6 @@ from typing import Optional
 from core.database import get_db
 from dependencies.auth import get_current_user
 from fastapi import APIRouter, Depends, HTTPException, status
-from models.auth import User
 from pydantic import BaseModel
 from schemas.auth import UserResponse
 from services.user import UserService
@@ -13,12 +12,14 @@ router = APIRouter(prefix="/api/v1/users", tags=["users"])
 
 
 class UpdateProfileRequest(BaseModel):
-    name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: Optional[str] = None
 
 
 @router.get("/profile", response_model=UserResponse)
-async def get_profile(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Get current user profile"""
+async def get_profile(db: AsyncSession = Depends(get_db), current_user: UserResponse = Depends(get_current_user)):
+    """Get current user profile."""
     profile = await UserService.get_user_profile(db, current_user.id)
     if not profile:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User profile not found")
@@ -29,10 +30,16 @@ async def get_profile(db: AsyncSession = Depends(get_db), current_user: User = D
 async def update_profile(
     profile_data: UpdateProfileRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: UserResponse = Depends(get_current_user),
 ):
-    """Update current user profile"""
-    profile = await UserService.update_user_profile(db, current_user.id, profile_data.name)
+    """Update current user profile."""
+    profile = await UserService.update_user_profile(
+        db,
+        current_user.id,
+        first_name=profile_data.first_name,
+        last_name=profile_data.last_name,
+        phone=profile_data.phone,
+    )
     if not profile:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User profile not found")
     return profile

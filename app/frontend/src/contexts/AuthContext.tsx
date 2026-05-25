@@ -72,6 +72,10 @@ function authUrl(path: string) {
   return `${getAPIBaseURL()}/api/v1/auth${path}`;
 }
 
+function normalizeUser(user: AuthUser): AuthUser {
+  return { ...user, id: String(user.id) };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(() =>
@@ -91,7 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         Authorization: `Bearer ${jwtToken}`,
       },
     });
-    return parseAuthResponse(response);
+    return normalizeUser(await parseAuthResponse(response));
   };
 
   const storeSession = async (jwtToken: string): Promise<AuthUser> => {
@@ -141,25 +145,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       body: JSON.stringify({ email, password }),
     });
     const data = await parseAuthResponse(response);
-    return storeSession(data.token);
+    return storeSession(data.access_token);
   };
 
   const register = async (data: RegisterData) => {
-    const role = data.role === 'admin' ? 'admin' : 'archer';
-    const endpoint = role === 'admin' ? '/register-admin' : '/register-archer';
-    const response = await fetch(authUrl(endpoint), {
+    const response = await fetch(authUrl('/register'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: data.email,
         password: data.password,
+        role: data.role === 'admin' ? 'admin' : 'archer',
         first_name: data.first_name || '',
         last_name: data.last_name || '',
         phone: data.phone || '',
       }),
     });
     const result = await parseAuthResponse(response);
-    return storeSession(result.token);
+    return storeSession(result.access_token);
   };
 
   const logout = async () => {
