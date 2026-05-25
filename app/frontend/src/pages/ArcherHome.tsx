@@ -66,13 +66,19 @@ interface PublicTournament {
 }
 
 export default function ArcherHome() {
-  const { user, token } = useAuth();
+  const { user, token, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [myTournaments, setMyTournaments] = useState<MyTournamentEntry[]>([]);
   const [upcomingTournaments, setUpcomingTournaments] = useState<PublicTournament[]>([]);
   const [loadingMy, setLoadingMy] = useState(true);
   const [loadingUpcoming, setLoadingUpcoming] = useState(true);
   const client = getClient();
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/auth?role=archer', { replace: true });
+    }
+  }, [authLoading, user, navigate]);
 
   useEffect(() => {
     const fetchMyTournaments = async () => {

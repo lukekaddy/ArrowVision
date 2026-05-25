@@ -215,7 +215,7 @@ export default function TournamentCreate() {
         max_group_size: maxGroupSize,
         status: 'auto',
       };
-      // Use apiCall with the FastAPI JWT from localStorage.
+      // Use apiCall with the Supabase access token from the active session.
       const res = await client.apiCall.invoke({
         url: '/api/v1/tournament/create',
         method: 'POST',
@@ -224,7 +224,7 @@ export default function TournamentCreate() {
       });
       const id = res?.data?.id;
       if (id) {
-        navigate(`/dashboard/${id}`);
+        navigate(`/admin?tournamentId=${id}`);
       } else {
         navigate('/');
       }
@@ -448,7 +448,7 @@ export default function TournamentCreate() {
                 try {
                   const objectKey = `maps/${Date.now()}-${file.name}`;
                   const bucketName = 'course-maps';
-                  // Use replays endpoints which use custom auth (get_current_custom_user)
+                  // Use replays endpoints with the Supabase access token
                   const uploadRes = await client.apiCall.invoke({
                     url: '/api/v1/replays/get-upload-url',
                     method: 'POST',

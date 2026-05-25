@@ -77,18 +77,12 @@ async def get_settings(current_user: UserResponse = Depends(get_admin_user)):
             "STRIPE_SUCCESS_URL": "Payment success callback URL",
             "STRIPE_CANCEL_URL": "Payment cancellation callback URL",
             "ALLOWED_DOMAINS": "Allowed domains",
-            "OIDC_ISSUER_URL": "OIDC issuer URL",
-            "OIDC_CLIENT_ID": "OIDC client ID",
-            "OIDC_CLIENT_SECRET": "OIDC client secret",
-            "OIDC_SCOPE": "OIDC scopes",
             "HOST": "Server host address",
             "PORT": "Server port",
             "FRONTEND_URL": "Frontend URL",
             "JWT_SECRET_KEY": "JWT signing secret key",
             "JWT_ALGORITHM": "JWT signing algorithm",
             "JWT_EXPIRE_MINUTES": "JWT expiration time (minutes)",
-            "ADMIN_USER_ID": "Admin user ID",
-            "ADMIN_USER_EMAIL": "Admin user email",
         }
 
         frontend_descriptions = {"VITE_API_BASE_URL": "Base API URL", "VITE_FRONTEND_URL": "Frontend URL"}

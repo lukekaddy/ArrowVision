@@ -50,7 +50,7 @@ function parseCourses(coursesStr?: string): CourseConfig[] {
 }
 
 export default function Index() {
-  const { user, isAuthenticated, loading } = useAuth();
+  const { user, token, isAuthenticated, loading } = useAuth();
   const navigate = useNavigate();
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [loadingTournaments, setLoadingTournaments] = useState(true);
@@ -185,7 +185,7 @@ export default function Index() {
                   className="group rounded-xl border border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10 hover:border-emerald-500/50 transition-all p-5 relative isolate"
                 >
                   <Link
-                    to={user ? `/dashboard/${t.id}` : '/leaderboard'}
+                    to={user ? `/admin?tournamentId=${t.id}` : '/leaderboard'}
                     className="block"
                   >
                     <div className={`flex items-start justify-between mb-3 ${user ? 'pr-20' : ''}`}>
@@ -278,7 +278,7 @@ export default function Index() {
                   className="group rounded-xl border border-slate-700/50 bg-slate-800/50 hover:bg-slate-800 hover:border-emerald-500/30 transition-all p-5 relative isolate"
                 >
                   <Link
-                    to={user ? `/dashboard/${t.id}` : '/leaderboard'}
+                    to={user ? `/admin?tournamentId=${t.id}` : '/leaderboard'}
                     className="block"
                   >
                     <div className={`flex items-start justify-between mb-3 ${isUpcoming && user ? 'pr-20' : ''}`}>
@@ -345,12 +345,11 @@ export default function Index() {
                           e.preventDefault();
                           e.stopPropagation();
                           if (window.confirm(`Are you sure you want to delete "${t.name}"? This action cannot be undone.`)) {
-                            const storedToken = localStorage.getItem('arrowlive_token');
                             client.apiCall.invoke({
                               url: `/api/v1/tournament/delete/${t.id}`,
                               method: 'DELETE',
                               data: {},
-                              ...(storedToken ? { options: { headers: { Authorization: `Bearer ${storedToken}` } } } : {}),
+                              ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
                             }).then(() => {
                               setTournaments((prev) => prev.filter((tour) => tour.id !== t.id));
                             }).catch(() => {

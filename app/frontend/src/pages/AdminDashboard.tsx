@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Play, Square, Download, Edit2, Check, MapPin } from 'lucide-react';
+import { Play, Square, Download, Edit2, Check, MapPin, Trophy, ClipboardList, Plus } from 'lucide-react';
 
 interface Archer {
   id: number;
@@ -43,14 +43,16 @@ interface TournamentInfo {
 
 
 
-export default function TournamentDashboard() {
-  const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
+export default function AdminDashboard() {
+  const [searchParams] = useSearchParams();
+  const id = searchParams.get('tournamentId');
+  const { user, loading: authLoading } = useAuth();
   const client = getClient();
   const navigate = useNavigate();
   const [tournament, setTournament] = useState<TournamentInfo | null>(null);
   const [archers, setArchers] = useState<Archer[]>([]);
   const [scores, setScores] = useState<Score[]>([]);
+  const [tournaments, setTournaments] = useState<TournamentInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [editingScore, setEditingScore] = useState<number | null>(null);
@@ -58,8 +60,36 @@ export default function TournamentDashboard() {
   const [editingArcherGroup, setEditingArcherGroup] = useState<number | null>(null);
   const [editGroupValue, setEditGroupValue] = useState('');
 
+  const fetchTournaments = async () => {
+    setLoading(true);
+    setTournament(null);
+    setArchers([]);
+    setScores([]);
+    try {
+      const res = await client.apiCall.invoke({
+        url: '/api/v1/tournament/public-list',
+        method: 'GET',
+        data: {},
+      });
+      setTournaments(res?.data?.items || res?.data || []);
+    } catch (err) {
+      console.error('Error loading tournaments:', err);
+      setTournaments([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const fetchData = async () => {
-    if (!id) return;
+    if (!id) {
+      fetchTournaments();
+      return;
+    }
+
+    setLoading(true);
+    setTournament(null);
+    setArchers([]);
+    setScores([]);
     try {
       const tRes = await client.apiCall.invoke({ url: `/api/v1/tournament/public/${id}`, method: 'GET', data: {} });
       setTournament(tRes?.data || null);
@@ -79,6 +109,12 @@ export default function TournamentDashboard() {
   useEffect(() => {
     fetchData();
   }, [id]);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      navigate('/auth?role=admin', { replace: true });
+    }
+  }, [authLoading, user, navigate]);
 
 
 
@@ -126,30 +162,82 @@ export default function TournamentDashboard() {
     }
   };
 
-  if (!user) {
+  const getArcherName = (archerId: number) => archers.find((a) => a.id === archerId)?.archer_name || `Archer #${archerId}`;
+
+  if (authLoading || !user) {
     return (
       <Layout>
         <div className="max-w-md mx-auto px-4 py-20 text-center">
-          <h2 className="text-2xl font-bold text-white mb-3">Sign In Required</h2>
-          <Button onClick={() => navigate('/auth?role=admin')} className="bg-emerald-500 hover:bg-emerald-600 text-white">Sign In</Button>
+          <div className="h-8 w-8 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-slate-400">Redirecting to sign in...</p>
         </div>
       </Layout>
     );
   }
 
-  const getArcherName = (archerId: number) => archers.find((a) => a.id === archerId)?.archer_name || `Archer #${archerId}`;
-
   return (
     <Layout>
-      <div className="max-w-5xl mx-auto px-4 py-8">
-        {loading ? (
-          <div className="animate-pulse space-y-4">
-            <div className="h-10 bg-slate-800 rounded w-1/2" />
-            <div className="h-40 bg-slate-800 rounded" />
+      <div className="max-w-5xl mx-auto px-4 py-8 space-y-8">
+        <div className="rounded-2xl border border-slate-700/50 bg-slate-900/80 p-6">
+          <h1 className="text-3xl font-bold text-white mb-2">Admin Dashboard</h1>
+          <p className="text-slate-400">
+            Manage tournaments, scorecards, archers, scores, and event operations from one admin control center.
+          </p>
+          {!user && (
+            <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <span>Sign in as an admin to save changes and access protected management actions.</span>
+              <Button onClick={() => navigate('/auth?role=admin')} size="sm" className="bg-amber-500 hover:bg-amber-600 text-black">
+                Sign In
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <section>
+          <h2 className="text-xl font-semibold text-white mb-4">Admin Overview</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Link
+              to="/create-tournament"
+              className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-5 hover:bg-emerald-500/20 transition-all group"
+            >
+              <div className="h-12 w-12 rounded-lg bg-emerald-500/20 flex items-center justify-center mb-4">
+                <Plus className="h-6 w-6 text-emerald-400" />
+              </div>
+              <h3 className="text-white font-semibold group-hover:text-emerald-400 transition-colors">
+                Create Tournament
+              </h3>
+              <p className="text-sm text-slate-400 mt-1">Set up a new tournament event.</p>
+            </Link>
+
+            <Link
+              to="/create-scorecard"
+              className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-5 hover:bg-amber-500/20 transition-all group"
+            >
+              <div className="h-12 w-12 rounded-lg bg-amber-500/20 flex items-center justify-center mb-4">
+                <ClipboardList className="h-6 w-6 text-amber-400" />
+              </div>
+              <h3 className="text-white font-semibold group-hover:text-amber-400 transition-colors">
+                Create Scorecard
+              </h3>
+              <p className="text-sm text-slate-400 mt-1">Design a new scoring template.</p>
+            </Link>
+
+            <Link
+              to="/create-scorecard"
+              className="rounded-xl border border-blue-500/30 bg-blue-500/10 p-5 hover:bg-blue-500/20 transition-all group"
+            >
+              <div className="h-12 w-12 rounded-lg bg-blue-500/20 flex items-center justify-center mb-4">
+                <Edit2 className="h-6 w-6 text-blue-400" />
+              </div>
+              <h3 className="text-white font-semibold group-hover:text-blue-400 transition-colors">
+                Edit Scorecards
+              </h3>
+              <p className="text-sm text-slate-400 mt-1">Update existing scorecard templates.</p>
+            </Link>
           </div>
-        ) : !tournament ? (
-          <p className="text-slate-400 text-center py-20">Tournament not found.</p>
-        ) : (
+        </section>
+
+        {tournament ? (
           <>
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
@@ -169,6 +257,21 @@ export default function TournamentDashboard() {
                 )}
               </div>
               <div className="flex gap-2 flex-wrap">
+                <Link to="/create-tournament">
+                  <Button variant="outline" className="border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10 gap-1">
+                    <Plus className="h-4 w-4" /> Create Tournament
+                  </Button>
+                </Link>
+                <Link to={`/edit-tournament/${tournament.id}`}>
+                  <Button variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700/50 gap-1">
+                    <Edit2 className="h-4 w-4" /> Edit Tournament
+                  </Button>
+                </Link>
+                <Link to={`/create-scorecard?tournament_id=${tournament.id}`}>
+                  <Button variant="outline" className="border-amber-500/50 text-amber-400 hover:bg-amber-500/10 gap-1">
+                    <ClipboardList className="h-4 w-4" /> Create/Edit Scorecards
+                  </Button>
+                </Link>
                 {tournament.status !== 'active' && (
                   <Button onClick={() => updateStatus('active')} className="bg-emerald-500 hover:bg-emerald-600 text-white gap-1">
                     <Play className="h-4 w-4" /> Start
@@ -324,6 +427,67 @@ export default function TournamentDashboard() {
               )}
             </div>
           </>
+        ) : (
+          <section>
+            <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+              <Trophy className="h-5 w-5 text-emerald-400" />
+              Manage Tournaments
+            </h2>
+            {loading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {[1, 2].map((item) => (
+                  <div key={item} className="rounded-xl border border-slate-700/50 bg-slate-800/50 p-5 animate-pulse h-32" />
+                ))}
+              </div>
+            ) : tournaments.length === 0 ? (
+              <div className="rounded-xl border border-slate-700/50 bg-slate-800/50 p-6 text-center">
+                <p className="text-slate-400 mb-4">No tournaments found.</p>
+                <Link to="/create-tournament">
+                  <Button className="bg-emerald-500 hover:bg-emerald-600 text-white">
+                    Create Tournament
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {tournaments.map((item) => (
+                  <div
+                    key={item.id}
+                    className="rounded-xl border border-slate-700/50 bg-slate-800/50 p-5 hover:border-emerald-500/40 hover:bg-slate-800 transition-all"
+                  >
+                    <div className="flex items-start justify-between gap-4 mb-4">
+                      <div>
+                        <h3 className="text-lg font-semibold text-white">{item.name}</h3>
+                        <p className="text-sm text-slate-400 mt-1">
+                          {item.date} {item.location ? `· ${item.location}` : ''}
+                        </p>
+                      </div>
+                      <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400">
+                        {item.status || 'auto'}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Link to={`/admin?tournamentId=${item.id}`}>
+                        <Button size="sm" className="bg-emerald-500 hover:bg-emerald-600 text-white">
+                          Open Dashboard
+                        </Button>
+                      </Link>
+                      <Link to={`/edit-tournament/${item.id}`}>
+                        <Button size="sm" variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700/50 gap-1">
+                          <Edit2 className="h-3.5 w-3.5" /> Edit Tournament
+                        </Button>
+                      </Link>
+                      <Link to={`/create-scorecard?tournament_id=${item.id}`}>
+                        <Button size="sm" variant="outline" className="border-amber-500/50 text-amber-400 hover:bg-amber-500/10 gap-1">
+                          <ClipboardList className="h-3.5 w-3.5" /> Create/Edit Scorecard
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         )}
       </div>
     </Layout>

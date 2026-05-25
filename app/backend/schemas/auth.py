@@ -1,15 +1,21 @@
-from datetime import datetime
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel
 
 
+class UserRole(str, Enum):
+    admin = "admin"
+    archer = "archer"
+
+
 class UserResponse(BaseModel):
     id: str
-    email: str
-    name: Optional[str] = None
-    role: str = "archer"
-    last_login: Optional[datetime] = None
+    email: str = ""
+    role: UserRole = UserRole.archer
+    first_name: str = ""
+    last_name: str = ""
+    phone: Optional[str] = None
 
     class Config:
         from_attributes = True

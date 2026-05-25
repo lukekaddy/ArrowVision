@@ -5,7 +5,8 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
-from routers.custom_auth import get_current_custom_user, UserInfo
+from dependencies.auth import get_current_user
+from schemas.auth import UserResponse
 from services.group_ops import GroupOpsService
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,7 @@ class UpdateShootingOrderModeRequest(BaseModel):
 # ---------- Authenticated Routes (placed before path params to avoid conflicts) ----------
 @router.get("/my-groups")
 async def get_my_groups(
-    current_user: UserInfo = Depends(get_current_custom_user),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get all groups the current user belongs to across all tournaments"""
@@ -127,7 +128,7 @@ async def get_shooting_order(
 @router.post("/create")
 async def create_group(
     data: CreateGroupRequest,
-    current_user: UserInfo = Depends(get_current_custom_user),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new archer group for a tournament (authenticated)"""
@@ -154,7 +155,7 @@ async def create_group(
 @router.post("/join")
 async def join_group(
     data: JoinGroupRequest,
-    current_user: UserInfo = Depends(get_current_custom_user),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Join an existing group in a tournament (authenticated)"""
@@ -180,7 +181,7 @@ async def join_group(
 @router.post("/join-by-code")
 async def join_by_code(
     data: JoinByCodeRequest,
-    current_user: UserInfo = Depends(get_current_custom_user),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Join a group using an invite code (authenticated)"""
@@ -206,7 +207,7 @@ async def join_by_code(
 @router.post("/dissolve")
 async def dissolve_group(
     data: DissolveGroupRequest,
-    current_user: UserInfo = Depends(get_current_custom_user),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Dissolve a group (creator only, before tournament starts)"""
@@ -232,7 +233,7 @@ async def dissolve_group(
 @router.post("/leave")
 async def leave_group(
     data: LeaveGroupRequest,
-    current_user: UserInfo = Depends(get_current_custom_user),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Leave the current group in a tournament (authenticated)"""
@@ -256,7 +257,7 @@ async def leave_group(
 async def update_shooting_order_mode(
     group_id: int,
     data: UpdateShootingOrderModeRequest,
-    current_user: UserInfo = Depends(get_current_custom_user),
+    current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Update the shooting order mode for a group (creator only)"""
