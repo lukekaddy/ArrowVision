@@ -17,7 +17,7 @@ export default function RoleSelection() {
     }
   }, [user, loading, navigate]);
 
-  const handleSelectRole = async (role: 'admin' | 'user') => {
+  const handleSelectRole = async (role: 'admin' | 'archer') => {
     if (selecting) return;
     setSelecting(true);
     try {
@@ -80,7 +80,7 @@ export default function RoleSelection() {
 
         {/* Archer Card */}
         <button
-          onClick={() => handleSelectRole('user')}
+          onClick={() => handleSelectRole('archer')}
           disabled={selecting}
           className="group relative flex flex-col items-center gap-4 p-8 rounded-2xl border-2 border-slate-700 hover:border-amber-500 bg-slate-800/50 hover:bg-slate-800 transition-all duration-200 disabled:opacity-50"
         >

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,13 +9,10 @@ interface ProtectedAdminRouteProps {
   children: React.ReactNode;
 }
 
-const ProtectedAdminRoute: React.FC<ProtectedAdminRouteProps> = ({
-  children,
-}) => {
-  const { user, loading, isAdmin, login } = useAuth();
-  const location = useLocation();
+const ProtectedAdminRoute: React.FC<ProtectedAdminRouteProps> = ({ children }) => {
+  const { user, loading, isAdmin } = useAuth();
+  const navigate = useNavigate();
 
-  // Loading state
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -27,12 +24,10 @@ const ProtectedAdminRoute: React.FC<ProtectedAdminRouteProps> = ({
     );
   }
 
-  // If the user is not logged in, redirect to the login page
   if (!user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/auth?role=admin" replace />;
   }
 
-  // If the user is not an admin, show an insufficient-permissions page
   if (!isAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -58,7 +53,7 @@ const ProtectedAdminRoute: React.FC<ProtectedAdminRouteProps> = ({
                   </span>
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
-                  Role: {user.role === 'user' ? 'Regular user' : user.role}
+                  Role: {user.role === 'archer' ? 'Archer' : user.role}
                 </div>
               </div>
               <p className="text-sm">
@@ -67,7 +62,11 @@ const ProtectedAdminRoute: React.FC<ProtectedAdminRouteProps> = ({
             </div>
 
             <div className="space-y-3">
-              <Button onClick={login} className="w-full" variant="outline">
+              <Button
+                onClick={() => navigate('/auth?role=admin')}
+                className="w-full"
+                variant="outline"
+              >
                 <LogIn className="h-4 w-4 mr-2" />
                 Switch account
               </Button>
@@ -86,7 +85,6 @@ const ProtectedAdminRoute: React.FC<ProtectedAdminRouteProps> = ({
     );
   }
 
-  // If the user is an admin, render the child components
   return <>{children}</>;
 };
 
