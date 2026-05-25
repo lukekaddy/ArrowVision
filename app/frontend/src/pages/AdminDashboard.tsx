@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { useAuth } from '@/contexts/AuthContext';
 import { getClient } from '@/lib/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Play, Square, Download, Edit2, Check, MapPin } from 'lucide-react';
+import { Play, Square, Download, Edit2, Check, MapPin, Trophy } from 'lucide-react';
 
 interface Archer {
   id: number;
@@ -43,14 +43,16 @@ interface TournamentInfo {
 
 
 
-export default function TournamentDashboard() {
-  const { id } = useParams<{ id: string }>();
+export default function AdminDashboard() {
+  const [searchParams] = useSearchParams();
+  const id = searchParams.get('tournamentId');
   const { user } = useAuth();
   const client = getClient();
   const navigate = useNavigate();
   const [tournament, setTournament] = useState<TournamentInfo | null>(null);
   const [archers, setArchers] = useState<Archer[]>([]);
   const [scores, setScores] = useState<Score[]>([]);
+  const [tournaments, setTournaments] = useState<TournamentInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [editingScore, setEditingScore] = useState<number | null>(null);
@@ -58,8 +60,33 @@ export default function TournamentDashboard() {
   const [editingArcherGroup, setEditingArcherGroup] = useState<number | null>(null);
   const [editGroupValue, setEditGroupValue] = useState('');
 
+  const fetchTournaments = async () => {
+    setLoading(true);
+    setTournament(null);
+    setArchers([]);
+    setScores([]);
+    try {
+      const res = await client.apiCall.invoke({
+        url: '/api/v1/tournament/public-list',
+        method: 'GET',
+        data: {},
+      });
+      setTournaments(res?.data?.items || res?.data || []);
+    } catch (err) {
+      console.error('Error loading tournaments:', err);
+      setTournaments([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const fetchData = async () => {
-    if (!id) return;
+    if (!id) {
+      fetchTournaments();
+      return;
+    }
+
+    setLoading(true);
     try {
       const tRes = await client.apiCall.invoke({ url: `/api/v1/tournament/public/${id}`, method: 'GET', data: {} });
       setTournament(tRes?.data || null);
@@ -148,7 +175,55 @@ export default function TournamentDashboard() {
             <div className="h-40 bg-slate-800 rounded" />
           </div>
         ) : !tournament ? (
-          <p className="text-slate-400 text-center py-20">Tournament not found.</p>
+          <div className="space-y-8">
+            <div className="rounded-2xl border border-slate-700/50 bg-slate-900/80 p-6">
+              <h1 className="text-3xl font-bold text-white mb-2">Admin Dashboard</h1>
+              <p className="text-slate-400">
+                Select a tournament to open the full tournament control center.
+              </p>
+            </div>
+
+            <section>
+              <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+                <Trophy className="h-5 w-5 text-emerald-400" />
+                Manage Tournaments
+              </h2>
+              {tournaments.length === 0 ? (
+                <div className="rounded-xl border border-slate-700/50 bg-slate-800/50 p-6 text-center">
+                  <p className="text-slate-400 mb-4">No tournaments found.</p>
+                  <Link to="/create-tournament">
+                    <Button className="bg-emerald-500 hover:bg-emerald-600 text-white">
+                      Create Tournament
+                    </Button>
+                  </Link>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {tournaments.map((item) => (
+                    <Link
+                      key={item.id}
+                      to={`/admin?tournamentId=${item.id}`}
+                      className="block rounded-xl border border-slate-700/50 bg-slate-800/50 p-5 hover:border-emerald-500/40 hover:bg-slate-800 transition-all"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <h3 className="text-lg font-semibold text-white hover:text-emerald-400 transition-colors">
+                            {item.name}
+                          </h3>
+                          <p className="text-sm text-slate-400 mt-1">
+                            {item.date} {item.location ? `· ${item.location}` : ''}
+                          </p>
+                        </div>
+                        <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400">
+                          {item.status || 'auto'}
+                        </span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
         ) : (
           <>
             {/* Header */}

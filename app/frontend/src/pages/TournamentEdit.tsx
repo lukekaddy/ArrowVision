@@ -365,7 +365,7 @@ export default function TournamentEdit() {
         },
         ...(token ? { options: { headers: { Authorization: `Bearer ${token}` } } } : {}),
       });
-      navigate(`/dashboard/${id}`);
+      navigate(`/admin?tournamentId=${id}`);
     } catch (err) {
       console.error('Failed to update tournament:', err);
     } finally {

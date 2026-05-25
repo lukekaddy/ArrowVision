@@ -224,7 +224,7 @@ export default function TournamentCreate() {
       });
       const id = res?.data?.id;
       if (id) {
-        navigate(`/dashboard/${id}`);
+        navigate(`/admin?tournamentId=${id}`);
       } else {
         navigate('/');
       }

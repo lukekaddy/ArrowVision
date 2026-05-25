@@ -8,7 +8,7 @@ import Landing from './pages/Landing';
 import AuthPage from './pages/AuthPage';
 import TournamentCreate from './pages/TournamentCreate';
 import TournamentEdit from './pages/TournamentEdit';
-import TournamentDashboard from './pages/TournamentDashboard';
+import AdminDashboard from './pages/AdminDashboard';
 import Scorecard from './pages/Scorecard';
 import Leaderboard from './pages/Leaderboard';
 import SmartScore from './pages/SmartScore';
@@ -27,14 +27,13 @@ const queryClient = new QueryClient();
 const AppRoutes = () => (
   <Routes>
     <Route path="/" element={<Index />} />
-    <Route path="/admin" element={<Index />} />
     <Route path="/landing" element={<Landing />} />
     <Route path="/auth" element={<AuthPage />} />
     <Route path="/forgot-password" element={<ForgotPassword />} />
     <Route path="/create-tournament" element={<TournamentCreate />} />
     <Route path="/edit-tournament/:id" element={<TournamentEdit />} />
     <Route path="/create-scorecard" element={<CreateScorecard />} />
-    <Route path="/dashboard/:id" element={<TournamentDashboard />} />
+    <Route path="/admin" element={<AdminDashboard />} />
     <Route path="/scorecard" element={<Scorecard />} />
     <Route path="/leaderboard" element={<Leaderboard />} />
     <Route path="/smart-score" element={<SmartScore />} />

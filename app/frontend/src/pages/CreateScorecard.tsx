@@ -272,7 +272,7 @@ export default function CreateScorecard() {
       }
 
       if (tournamentId && !editingId) {
-        navigate(`/dashboard/${tournamentId}`);
+        navigate(`/admin?tournamentId=${tournamentId}`);
       } else {
         // Refresh saved list and reset form
         await fetchSavedScorecards();
@@ -561,7 +561,7 @@ export default function CreateScorecard() {
             {tournamentId && !editingId && (
               <button
                 type="button"
-                onClick={() => navigate(`/dashboard/${tournamentId}`)}
+                onClick={() => navigate(`/admin?tournamentId=${tournamentId}`)}
                 className="w-full text-center text-sm text-slate-500 hover:text-slate-300 transition-colors"
               >
                 Skip for now — I&apos;ll set this up later

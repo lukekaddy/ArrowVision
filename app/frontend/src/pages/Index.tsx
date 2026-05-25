@@ -185,7 +185,7 @@ export default function Index() {
                   className="group rounded-xl border border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10 hover:border-emerald-500/50 transition-all p-5 relative isolate"
                 >
                   <Link
-                    to={user ? `/dashboard/${t.id}` : '/leaderboard'}
+                    to={user ? `/admin?tournamentId=${t.id}` : '/leaderboard'}
                     className="block"
                   >
                     <div className={`flex items-start justify-between mb-3 ${user ? 'pr-20' : ''}`}>
@@ -278,7 +278,7 @@ export default function Index() {
                   className="group rounded-xl border border-slate-700/50 bg-slate-800/50 hover:bg-slate-800 hover:border-emerald-500/30 transition-all p-5 relative isolate"
                 >
                   <Link
-                    to={user ? `/dashboard/${t.id}` : '/leaderboard'}
+                    to={user ? `/admin?tournamentId=${t.id}` : '/leaderboard'}
                     className="block"
                   >
                     <div className={`flex items-start justify-between mb-3 ${isUpcoming && user ? 'pr-20' : ''}`}>

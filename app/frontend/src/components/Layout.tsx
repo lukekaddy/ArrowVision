@@ -12,7 +12,7 @@ interface NavLink {
 }
 
 const ADMIN_NAV_LINKS: NavLink[] = [
-  { to: '/', label: 'Home' },
+  { to: '/admin', label: 'Home' },
   { to: '/create-tournament', label: 'Create Tournament' },
   { to: '/create-scorecard', label: 'Create Scorecard' },
   { to: '/scorecard', label: 'Scorecard' },
