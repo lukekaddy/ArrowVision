@@ -25,14 +25,25 @@ bearer_scheme = HTTPBearer(auto_error=False)
 router = APIRouter(prefix="/api/v1/custom-auth", tags=["custom-auth"])
 
 
-# ---------- Pydantic Schemas ----------
-class RegisterRequest(BaseModel):
+## ---------- Pydantic Schemas ----------
+from pydantic import BaseModel
+from typing import Optional
+
+
+class RegisterBase(BaseModel):
     email: str
     password: str
     first_name: str
     last_name: str
-    phone: str
-    role: str = "archer"
+    phone: Optional[str] = None
+
+
+class AdminRegisterRequest(RegisterBase):
+    pass
+
+
+class ArcherRegisterRequest(RegisterBase):
+    pass
 
 
 class LoginRequest(BaseModel):
@@ -141,15 +152,15 @@ async def get_current_custom_user(
 
 
 # ---------- Routes ----------
-@router.post("/register", response_model=AuthResponse, status_code=201)
-async def register(
-    data: RegisterRequest,
+
+@router.post("/register-admin", response_model=AuthResponse, status_code=201)
+async def register_admin(
+    data: AdminRegisterRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Register a new user with email and password."""
+    """Register ADMIN user (role is enforced server-side)."""
     service = Custom_usersService(db)
 
-    # Check if email already exists
     existing_user = await service.get_by_field("email", data.email)
     if existing_user:
         raise HTTPException(
@@ -157,27 +168,76 @@ async def register(
             detail="Email already registered",
         )
 
-    # Hash password and create user
     hashed = hash_password(data.password)
+
     user_data = {
         "email": data.email,
         "password_hash": hashed,
         "first_name": data.first_name,
         "last_name": data.last_name,
         "phone": data.phone or "",
-        "role": data.role,
+        "role": "admin",  # locked
     }
 
     try:
         user = await service.create(user_data)
     except Exception as e:
-        logger.error(f"Error creating user: {e}")
+        logger.error(f"Error creating admin user: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create user",
+            detail="Failed to create admin user",
         )
 
-    # Generate JWT token
+    token = create_access_token(user.id, user.email, user.role)
+
+    return AuthResponse(
+        token=token,
+        user=UserInfo(
+            id=user.id,
+            email=user.email,
+            first_name=user.first_name,
+            last_name=user.last_name,
+            phone=user.phone,
+            role=user.role,
+        ),
+    )
+
+
+@router.post("/register-archer", response_model=AuthResponse, status_code=201)
+async def register_archer(
+    data: ArcherRegisterRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Register ARCHER user (role is enforced server-side)."""
+    service = Custom_usersService(db)
+
+    existing_user = await service.get_by_field("email", data.email)
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered",
+        )
+
+    hashed = hash_password(data.password)
+
+    user_data = {
+        "email": data.email,
+        "password_hash": hashed,
+        "first_name": data.first_name,
+        "last_name": data.last_name,
+        "phone": data.phone or "",
+        "role": "archer",  # locked
+    }
+
+    try:
+        user = await service.create(user_data)
+    except Exception as e:
+        logger.error(f"Error creating archer user: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create archer user",
+        )
+
     token = create_access_token(user.id, user.email, user.role)
 
     return AuthResponse(
@@ -201,7 +261,6 @@ async def login(
     """Login with email and password."""
     service = Custom_usersService(db)
 
-    # Find user by email
     user = await service.get_by_field("email", data.email)
     if not user:
         raise HTTPException(
@@ -209,14 +268,12 @@ async def login(
             detail="Invalid email or password",
         )
 
-    # Verify password
     if not verify_password(data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
 
-    # Generate JWT token
     token = create_access_token(user.id, user.email, user.role)
 
     return AuthResponse(
@@ -229,44 +286,4 @@ async def login(
             phone=user.phone,
             role=user.role,
         ),
-    )
-
-
-@router.get("/me", response_model=UserInfo)
-async def get_me(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get current user info from JWT token."""
-    if not credentials or credentials.scheme.lower() != "bearer":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication credentials were not provided",
-        )
-
-    # Decode token
-    payload = decode_token(credentials.credentials)
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload",
-        )
-
-    # Fetch user from database to get latest info
-    service = Custom_usersService(db)
-    user = await service.get_by_id(int(user_id))
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
-        )
-
-    return UserInfo(
-        id=user.id,
-        email=user.email,
-        first_name=user.first_name,
-        last_name=user.last_name,
-        phone=user.phone,
-        role=user.role,
     )
